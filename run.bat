@@ -35,7 +35,7 @@ if not defined PY (
     echo     Then double-click run.bat again.
     goto :fail
 )
-for /f "delims=" %%V in ('"%PY% -c "import sys; print('Python', sys.version.split()[0])""') do set "PYVER=%%V"
+for /f "delims=" %%V in ('"%PY% -c "import sys; print^('Python', sys.version.split^(^)[0]^)""') do set "PYVER=%%V"
 echo [digital-twin-generator] Using %PYVER% (%PY%)
 
 rem 2. Tk is needed for the window (not for the command-line tools) --------------
