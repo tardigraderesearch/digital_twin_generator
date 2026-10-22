@@ -130,8 +130,9 @@ Heuristics you should know about:
 ./run.sh servos                                          # servo library and what is verified
 ```
 
-The launchers find Python 3.11+, create `.venv`, install the dependencies
-when `pyproject.toml` changes, and run. Tests:
+The launchers only find Python 3.11+ and hand over to `launcher.py`
+(stdlib only, identical on every OS), which creates `.venv`, installs the
+dependencies when `pyproject.toml` changes, and runs. Tests:
 `.venv/bin/pip install -e .[test] && .venv/bin/python -m pytest`.
 
 ## File formats
