@@ -117,3 +117,17 @@ def test_hidden_root_does_not_merge_moving_tags_into_the_base():
     for j in truth.values():
         c = next(c for c in result.channels if c.channel == j["channel"])
         assert c.status == "needs_confirmation" or (c.child == j["child"] and c.parent == j["parent"]), c
+
+
+def test_second_base_tag_stands_in_for_a_hidden_root():
+    """Root tag hidden in one capture of two wiggles: the other base tag (proven
+    rigid with it in every channel's wiggle) keeps the map exact."""
+    log = generate(seed=0)
+    truth = log.header["truth"]["joints"]
+    for ch in (truth["j_base_yaw"]["channel"], truth["j_shoulder"]["channel"]):
+        frame = next(f for f in log.select(phase="wiggle", channel=ch) if f.event == "wiggle_plus")
+        frame.poses.pop(0, None)
+    result = infer_linkage(log, parse_markers(log.header["markers"]))
+    got = mapping(result)
+    for j in truth.values():
+        assert got[j["channel"]][:2] == ("mapped", j["child"]), got

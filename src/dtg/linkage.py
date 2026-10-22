@@ -114,10 +114,39 @@ def choose_root(log: ObservationLog, markers: Markers | None) -> int:
     return min(spread, key=spread.get)
 
 
-def _rel(frame, root, tag):
-    if root in frame.poses and tag in frame.poses:
+def _rel(frame, root, tag, anchors=None):
+    """Pose of ``tag`` relative to the root tag. If the root tag itself is
+    hidden in this capture, a tag proven rigid with it (``anchors``: tag ->
+    T_root_tag) stands in for it."""
+    if tag not in frame.poses:
+        return None
+    if root in frame.poses:
         return inv(frame.poses[root]) @ frame.poses[tag]
-    return None
+    est = [frame.poses[k] @ inv(T) for k, T in (anchors or {}).items() if k in frame.poses and k != tag]
+    return inv(mean_pose(est)) @ frame.poses[tag] if est else None
+
+
+def root_anchors(wiggle, root, tags, channels, p) -> dict:
+    """Tags that provably sit on the root link: seen together with the root
+    tag in at least one moving capture (plus or minus) of EVERY channel, and
+    never moving relative to it. Only then could any motion have shown."""
+    anchors = {}
+    for k in tags:
+        rel, covered = [], set()
+        for f in wiggle:
+            if root in f.poses and k in f.poses:
+                rel.append(inv(f.poses[root]) @ f.poses[k])
+                if f.event in ("wiggle_plus", "wiggle_minus"):
+                    covered.add(f.channel)
+        if covered != set(channels) or len(rel) < 3:
+            continue
+        M = mean_pose(rel)
+        dev = np.array([_delta(M, r) for r in rel])
+        rot_lim = max(p.rigid_rot_deg, 5 * float(np.median(dev[:, 0])))
+        trans_lim = max(p.rigid_trans_mm, 5 * float(np.median(dev[:, 1])))
+        if dev[:, 0].max() <= rot_lim and dev[:, 1].max() <= trans_lim:
+            anchors[k] = M
+    return anchors
 
 
 def _delta(A, B):
@@ -137,6 +166,7 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
     if not wiggle:
         raise ValueError("log has no wiggle frames: run the wiggle step before ROM")
     channels = sorted({f.channel for f in wiggle})
+    anchors = root_anchors(wiggle, root, tags, channels, p)
 
     # jitter: spread of each tag's relative pose over all base captures where
     # its own channel was not being moved is a fair noise estimate
@@ -144,7 +174,7 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
     for f in wiggle:
         if f.event == "wiggle_base":
             for k in tags:
-                r = _rel(f, root, k)
+                r = _rel(f, root, k, anchors)
                 if r is not None:
                     base_rel[k].append((f.channel, r))
     rot_noise, trans_noise = [], []
@@ -170,9 +200,9 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
         fr = [f for f in wiggle if f.channel == c]
         moved[c], occluded[c], one_sided[c] = set(), set(), set()
         for k in tags:
-            base = [_rel(f, root, k) for f in fr if f.event == "wiggle_base"]
+            base = [_rel(f, root, k, anchors) for f in fr if f.event == "wiggle_base"]
             base = [b for b in base if b is not None]
-            ends = {e: [_rel(f, root, k) for f in fr if f.event == e] for e in ("wiggle_plus", "wiggle_minus")}
+            ends = {e: [_rel(f, root, k, anchors) for f in fr if f.event == e] for e in ("wiggle_plus", "wiggle_minus")}
             ends = {e: [x for x in v if x is not None] for e, v in ends.items()}
             if not base or not ends["wiggle_plus"] or not ends["wiggle_minus"]:
                 occluded[c].add(k)
