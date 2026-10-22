@@ -213,15 +213,33 @@ def detect_support_planes(scan: Scan, centres, normals, weights, p: HealthParams
         centre = pts.mean(axis=0)
         normal = np.linalg.svd(pts - centre, full_matrices=False)[2][2]
         h = (centres - centre) @ normal
-        # robot side = the side holding most of the remaining area
+        # robot side = the side that reaches further from the plane (a
+        # turntable or floor is thin, the robot is tall); area would mislead
+        # when the support is bigger than the robot
+        rest = available & ~inl
+        reach_up = np.percentile(h[rest & (h > tol)], 98) if (rest & (h > tol)).any() else 0.0
+        reach_down = np.percentile(-h[rest & (h < -tol)], 98) if (rest & (h < -tol)).any() else 0.0
+        if reach_down > reach_up:
+            normal, h = -normal, -h
+        deep = scan.mm(p.low_feature_mm)
         above = weights[available & (h > tol)].sum()
-        below = weights[available & (h < -tol)].sum()
-        if below > above:
-            normal, h, above, below = -normal, -h, below, above
+        below = weights[available & (h < -deep)].sum()
         one_sided = above / max(above + below, 1e-12)
         if one_sided < p.plane_one_sided_frac:
             available &= ~inl  # a wall of the robot itself, not a support
             continue
+        # a thick turntable has two big parallel faces; RANSAC may pick the
+        # underside. Slide up to the highest parallel face (>= half the
+        # area) within the low-feature band: that is what the robot stands on.
+        parallel = available & (np.abs(normals @ normal) > 0.9) & (h > tol) & (h < scan.mm(p.low_feature_mm))
+        if parallel.any():
+            bins = np.arange(tol, scan.mm(p.low_feature_mm) + tol, tol)
+            area_per_bin = np.histogram(h[parallel], bins=bins, weights=weights[parallel])[0]
+            good = np.flatnonzero(area_per_bin >= 0.5 * weights[inl].sum())
+            if len(good):
+                lift = (bins[good[-1]] + bins[good[-1] + 1]) / 2
+                centre = centre + normal * lift
+                h = h - lift
         on_plane = available & (np.abs(h) <= tol)
         under = available & (h < -tol)
         low = available & (h > tol) & (h < scan.mm(p.low_feature_mm))
@@ -375,13 +393,30 @@ def detect_wires_and_blobs(scan: Scan, centres, normals, weights, exclude: np.nd
     long thin rail: the preview is for the operator to judge).
     """
     findings: list[Finding] = []
-    idx_s = _sample(np.where(exclude, 0.0, weights + 1e-15), p.sample_count, p.seed)
+    # about one sample per 0.8 mm^2 of surface: neighbour queries then reach across thin parts
+    area_mm2 = float(weights[~exclude].sum()) * scan.mm_per_unit ** 2
+    target = int(min(p.sample_count, max(2000, area_mm2 / 0.8)))
+    if scan.is_mesh:
+        # uniform points on the surface (area-weighted faces, random barycentric point)
+        rng = np.random.default_rng(p.seed)
+        prob = np.where(exclude, 0.0, weights)
+        if prob.sum() <= 0:
+            return findings, None
+        idx_s = rng.choice(len(weights), size=target, p=prob / prob.sum())
+        tri = scan.vertices[scan.faces[idx_s]]
+        a, b = rng.random(target), rng.random(target)
+        flip = a + b > 1
+        a[flip], b[flip] = 1 - a[flip], 1 - b[flip]
+        S = tri[:, 0] + a[:, None] * (tri[:, 1] - tri[:, 0]) + b[:, None] * (tri[:, 2] - tri[:, 0])
+    else:
+        idx_s = _sample(np.where(exclude, 0.0, weights + 1e-15), target, p.seed)
+        S = centres[idx_s]
     if len(idx_s) < 100:
         return findings, None
-    S, Nrm = centres[idx_s], normals[idx_s] * _outward_sign(scan)
+    Nrm = normals[idx_s] * _outward_sign(scan)
     tree = cKDTree(S)
     spacing = float(np.median(tree.query(S[:: max(1, len(S) // 3000)], k=2)[0][:, 1]))
-    sample_area = weights[idx_s].sum() / len(S) if len(S) else 0.0
+    sample_area = float(weights[~exclude].sum()) / len(S)
     _, nearest_sample = tree.query(centres)
     elem_ok = ~exclude
     in_wire = np.zeros(len(S), dtype=bool)
@@ -421,7 +456,7 @@ def detect_wires_and_blobs(scan: Scan, centres, normals, weights, exclude: np.nd
                     kind="wire", label=f"wire {n}", severity="problem", fix="strip_wires",
                     message=(f"Thin run about {extent_mm:.0f} mm long, under {p.wire_max_mm:g} mm thick: "
                              "looks like a servo lead or cable captured by the scanner."),
-                    metrics={"length_mm": extent_mm, "area_mm2": float(area_mm2),
+                    metrics={"length_mm": extent_mm,
                              "median_thickness_mm": float(np.median(thickness[members]) * scan.mm_per_unit),
                              "centre": S[members].mean(axis=0).tolist()},
                     faces=elems))
@@ -495,7 +530,7 @@ def check_scan(scan: Scan, params: HealthParams | None = None) -> HealthReport:
         skipped.append("Holes and wires need a mesh; this scan is a point cloud (mesh it in the scanner software first).")
     exclude = np.zeros(len(centres), dtype=bool)
     for f in findings:
-        if f.kind in ("support_plane", "fragment") and f.fix:
+        if f.kind == "support_plane" and f.fix:  # fragments stay: a detached wire loop is both
             exclude[f.faces if scan.is_mesh else f.points] = True
     extra, _ = detect_wires_and_blobs(scan, centres, normals, weights, exclude, p)
     findings += extra
@@ -540,6 +575,21 @@ def apply_fixes(scan: Scan, report: HealthReport, options: FixOptions) -> FixRes
             before = drop.sum()
             drop[ids] = True
             removed[f.fix] = removed.get(f.fix, 0) + int(drop.sum() - before)
+    if scan.is_mesh and options.drop_fragments and drop.any():
+        # removals (wires, planes) leave shreds behind: drop islands that are now small
+        kept = np.flatnonzero(~drop)
+        f = scan.faces[kept]
+        edges = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+        g = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])), shape=(len(scan.vertices),) * 2)
+        lab = connected_components(g, directed=False)[1][f[:, 0]]
+        tri = scan.vertices[f]
+        area = np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1) / 2
+        comp_area = np.bincount(lab, weights=area)
+        small = comp_area < report.params.fragment_max_frac * comp_area.sum()
+        small[np.argmax(comp_area)] = False
+        shreds = kept[small[lab]]
+        drop[shreds] = True
+        removed["drop_fragments"] = removed.get("drop_fragments", 0) + int(len(shreds))
     keep = np.flatnonzero(~drop)
     if not scan.is_mesh:
         pts = scan.vertices[keep].copy()
