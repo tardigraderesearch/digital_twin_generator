@@ -60,3 +60,18 @@ def test_comms_map(synth):
         assert rows[c]["status"] == "no_response" and "joint" in rows[c]
     assert rows[0]["servo_model"] == "MG996R"
     json.dumps(cmap)
+
+
+def test_joint_with_unfitted_parent_is_left_out_not_a_second_root(tmp_path, synth):
+    """Found by the virtual bench: the turret joint failed to fit, the forearm
+    joint (parent turret) did, and validate_urdf raised 'expected one root
+    link', so build_twin wrote nothing at all."""
+    import copy
+    from dtg.export import export_all
+    _, _, _, kin = synth
+    broken = copy.deepcopy(kin)
+    first = next(j for j in broken.joints if j.parent == broken.root)
+    broken.joints = [j for j in broken.joints if j is not first]
+    report = export_all(broken, tmp_path / "twin")
+    assert report["urdf"]["root"] == broken.root
+    assert any("not in the URDF" in f for f in report["flags"])
