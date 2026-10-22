@@ -27,6 +27,13 @@ def run_gui_smoke(seed: int = 0) -> dict:
         app = RomApp(root, port=bench.port, channels=[ch], operator="sim", run_timer=False,
                      connect_fn=lambda port: connect(port))
 
+        def settle(target_us: int, timeout_s: float = 15.0) -> None:
+            end = time.monotonic() + timeout_s
+            while time.monotonic() < end:
+                pump(0.1)
+                if app.controller.status(ch)["current_us"] == target_us:
+                    return
+
         def pump(seconds: float) -> None:
             end = time.monotonic() + seconds
             while time.monotonic() < end:
@@ -45,11 +52,11 @@ def run_gui_smoke(seed: int = 0) -> dict:
         bench.wait_output(ch, 1500)
         target = 1500 + (1 if j.direction > 0 else -1) * 200   # 200 us toward the upper stop... slowly
         app.rows[ch]["var"].set(target)
-        pump(2.5)
+        settle(target)
         out["reached_us"] = app.controller.status(ch)["current_us"]
         app.rows[ch]["rom1"].invoke()
         app.rows[ch]["var"].set(1500 - (target - 1500))
-        pump(3.0)
+        settle(1500 - (target - 1500))
         app.rows[ch]["rom2"].invoke()
         out["rom_range_us"] = list(app.roms[ch].range)
         fw = app.controller.status(ch)
