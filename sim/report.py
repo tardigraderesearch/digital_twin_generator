@@ -29,6 +29,22 @@ def build(summary: dict, calibration: str | None = None, notes: str | None = Non
     n = len(results)
     ok = [r for r in results if r.get("pass")]
     lines = ["# Virtual bench report", ""]
+    safety = [("arming (cutoff + token; nothing before ARM; ARM alone drives nothing)", ["arming_guarded", "arm_outputs_nothing"]),
+              ("ROM limits never exceeded (firmware rejects past marks; no PWM outside ROM)", ["rom_limits_held"]),
+              ("never commanded past a hard stop / no stop contact", ["pwm_never_past_stops", "no_hard_stop_contact"]),
+              ("slew capped at the firmware limit", ["slew_capped"]),
+              ("watchdog releases on host silence and on unplug", ["watchdog"]),
+              ("e-stop (command + input) releases and latches", ["estop_latch"]),
+              ("out-of-band / bad token / bad value rejected", ["out_of_band_rejected"]),
+              ("no first-move snap at START", ["no_first_move_snap"]),
+              ("wrong IO: unused channels only wiggled; no silent wrong map", ["unused_channels_only_wiggled", "no_silent_wrong_map"]),
+              ("released servos hold still", ["released_servos_hold"])]
+    lines += ["## Safety verdict", "", f"{n} randomized robots (random wiring, inverted joints, mis-mounted horns).", "",
+              "| safety property | result |", "|---|---|"]
+    for label, keys in safety:
+        good = sum(all((r.get("checks") or {}).get(k) for k in keys) for r in results)
+        lines.append(f"| {label} | {'PASS' if good == n else 'FAIL'} ({good}/{n}) |")
+    lines.append("")
     if notes:
         lines += [notes.strip(), ""]
     lines += ["## Monte-Carlo run", "",

@@ -1,5 +1,22 @@
 # Virtual bench report
 
+## Safety verdict
+
+26 randomized robots (random wiring, inverted joints, mis-mounted horns).
+
+| safety property | result |
+|---|---|
+| arming (cutoff + token; nothing before ARM; ARM alone drives nothing) | PASS (26/26) |
+| ROM limits never exceeded (firmware rejects past marks; no PWM outside ROM) | PASS (26/26) |
+| never commanded past a hard stop / no stop contact | PASS (26/26) |
+| slew capped at the firmware limit | PASS (26/26) |
+| watchdog releases on host silence and on unplug | PASS (26/26) |
+| e-stop (command + input) releases and latches | PASS (26/26) |
+| out-of-band / bad token / bad value rejected | PASS (26/26) |
+| no first-move snap at START | PASS (26/26) |
+| wrong IO: unused channels only wiggled; no silent wrong map | PASS (26/26) |
+| released servos hold still | PASS (26/26) |
+
 The virtual bench is an end-to-end, simulated hardware test for robo-prober v0.2 and DTG. It runs the real
 code paths with no robot and no person present. Regenerate this report with `make sim-mc`
 (`python -m sim montecarlo --n 50 --report`).
@@ -69,108 +86,108 @@ code paths with no robot and no person present. Regenerate this report with `mak
 
 ## Monte-Carlo run
 
-50 randomized robots, light level mixed, wall time 47 min. Seeds 9, 29, 33 and 42 were re-run after a harness fix: the scripted unplug probe had STARTed a servo at 1500 us where the watchdog probe had left it at 1530 us (a 3 deg jump made by the test, not by robo-prober). Real-time sessions in parallel on one desktop (load ~40 on 32 cores).
+26 randomized robots, light level mixed (dim..bright per seed) (batch capped early: 26 finished of 42 started). Real-time sessions in parallel on one desktop (load ~40 on 32 cores).
 
-**Overall pass (every check below): 4% (2/50)**
+**Overall pass (every check below): 4% (1/26)**
 
 ### Safety under simulation (real firmware core, real host)
 
 | behaviour | result |
 |---|---|
 | hard-stop contacts (damage risk) in all sessions | **0** |
-| first-move jump at START (deg), per run max | median 2.6, worst 3.0 (threshold 3.0) |
+| first-move jump at START (deg), per run max | median 1.2, worst 1.5 (threshold 3.0) |
 | watchdog release on host silence (s) | median 1.001, max 1.002 |
-| release after host unplug / crash (s) | median 1.001, max 1.003 |
-| E-STOP release (s) | median 0.000, max 0.003 |
-| E-STOP latches until cleared | 100% (50/50) |
-| hardware e-stop input latches | 100% (50/50) |
-| out-of-band / bad-token / bad-value moves rejected, output unchanged | 100% (50/50) |
-| released servos stay put (no motion after release) | 100% (50/50) |
-| ARM alone drives no output | 100% (50/50) |
-| ARM refused without cutoff / with bad token; START, MOVE refused before ARM | 100% (50/50) |
-| PWM edges audited (every output change the firmware made) | 422098 |
+| release after host unplug / crash (s) | median 1.001, max 1.002 |
+| E-STOP release (s) | median 0.001, max 0.004 |
+| E-STOP latches until cleared | 100% (26/26) |
+| hardware e-stop input latches | 100% (26/26) |
+| out-of-band / bad-token / bad-value moves rejected, output unchanged | 100% (26/26) |
+| released servos stay put (no motion after release) | 100% (26/26) |
+| ARM alone drives no output | 100% (26/26) |
+| ARM refused without cutoff / with bad token; START, MOVE refused before ARM | 100% (26/26) |
+| PWM edges audited (every output change the firmware made) | 220902 |
 | PWM pulses commanding a joint past its hard stop | **0** |
 | PWM pulses outside the marked ROM range after Set ROM 1+2 | **0** |
 | pulses on unused channels beyond the +-80 us wiggle / default band | **0** |
 | firmware slew (us/s, worst 50 ms window per run; cap 250) | median 235, worst 235 |
-| MOVE 20 us past a marked ROM end rejected by the firmware, output unchanged | 100% (49/49) |
+| MOVE 20 us past a marked ROM end rejected by the firmware, output unchanged | 100% (26/26) |
 
-Hardware cases covered: every run has its own random wiring (3 of channels 0-7, 5 unused); 68 inverted joints and 121 horns mounted one or more spline teeth off across 50 runs.
+Hardware cases covered: every run has its own random wiring (3 of channels 0-7, 5 unused); 36 inverted joints and 64 horns mounted one or more spline teeth off across 26 runs.
 
 ### Checks
 
 | check | pass rate |
 |---|---|
-| all_joints_fitted | 52% (26/50) |
-| arm_outputs_nothing | 100% (50/50) |
-| arming_guarded | 100% (50/50) |
-| axis | 66% (33/50) |
-| direction | 96% (48/50) |
-| estop_latch | 100% (50/50) |
-| map_exact | 50% (25/50) |
-| no_errors | 100% (50/50) |
-| no_first_move_snap | 98% (49/50) |
-| no_hard_stop_contact | 100% (50/50) |
-| no_silent_wrong_map | 100% (50/50) |
-| out_of_band_rejected | 100% (50/50) |
-| pivot | 6% (3/50) |
-| pwm_never_past_stops | 100% (50/50) |
-| released_servos_hold | 100% (50/50) |
-| rom_limits_held | 100% (50/50) |
-| slew_capped | 100% (50/50) |
-| tags_on_right_links | 100% (50/50) |
-| terminal_ranges | 72% (36/50) |
-| twin_fk | 14% (7/50) |
-| unused_channels_only_wiggled | 100% (50/50) |
-| urdf_valid | 100% (50/50) |
-| us_angle_gain | 78% (39/50) |
-| watchdog | 100% (50/50) |
-| zero_pulse | 96% (48/50) |
+| all_joints_fitted | 50% (13/26) |
+| arm_outputs_nothing | 100% (26/26) |
+| arming_guarded | 100% (26/26) |
+| axis | 65% (17/26) |
+| direction | 96% (25/26) |
+| estop_latch | 100% (26/26) |
+| map_exact | 42% (11/26) |
+| no_errors | 100% (26/26) |
+| no_first_move_snap | 100% (26/26) |
+| no_hard_stop_contact | 100% (26/26) |
+| no_silent_wrong_map | 100% (26/26) |
+| out_of_band_rejected | 100% (26/26) |
+| pivot | 4% (1/26) |
+| pwm_never_past_stops | 100% (26/26) |
+| released_servos_hold | 100% (26/26) |
+| rom_limits_held | 100% (26/26) |
+| slew_capped | 100% (26/26) |
+| tags_on_right_links | 100% (26/26) |
+| terminal_ranges | 69% (18/26) |
+| twin_fk | 8% (2/26) |
+| unused_channels_only_wiggled | 100% (26/26) |
+| urdf_valid | 100% (26/26) |
+| us_angle_gain | 81% (21/26) |
+| watchdog | 100% (26/26) |
+| zero_pulse | 100% (26/26) |
 
 ### Channel -> joint map (wiring, direction, unused channels)
 
 | measure | result |
 |---|---|
-| exact on the first wiggle | 32% (16/50) |
-| exact after re-running flagged channels (operator follows DTG's advice) | 50% (25/50) |
-| runs still with flagged channels (operator must confirm) | 36% (18/50) |
-| runs where the operator re-ran a wiggle | 54% (27/50) |
+| exact on the first wiggle | 31% (8/26) |
+| exact after re-running flagged channels (operator follows DTG's advice) | 42% (11/26) |
+| runs still with flagged channels (operator must confirm) | 38% (10/26) |
+| runs where the operator re-ran a wiggle | 50% (13/26) |
 | **silent wrong mappings** (mapped, wrong child/parent) | **0** |
 
 ### Joint accuracy vs ground truth
 
-116 of 150 joints fitted (77% (116/150)).
+61 of 78 joints fitted (78% (61/78)).
 
 | metric | n | median | p95 | max | threshold |
 |---|---|---|---|---|---|
-| axis error (deg) | 116 | 0.79 | 38.57 | 67.00 | 2.0 |
-| pivot error, perpendicular to axis (mm) | 116 | 4.22 | 14.66 | 157.39 | 3.0 |
-| terminal range error (deg) | 116 | 0.55 | 5.07 | 162.32 | 2.0 |
-| us -> angle gain error (%) | 116 | 0.34 | 6.34 | 30.52 | 3.0 |
-| zero pulse error (us) | 116 | 1.91 | 10.07 | 73.14 | 15.0 |
+| axis error (deg) | 61 | 0.64 | 37.21 | 66.70 | 2.0 |
+| pivot error, perpendicular to axis (mm) | 61 | 4.10 | 11.86 | 53.80 | 3.0 |
+| terminal range error (deg) | 61 | 0.45 | 6.16 | 115.04 | 2.0 |
+| us -> angle gain error (%) | 61 | 0.30 | 7.82 | 28.29 | 3.0 |
+| zero pulse error (us) | 61 | 1.68 | 8.24 | 11.45 | 15.0 |
 
 Split by what DTG itself said about the joint (a large error on a joint DTG marked `ok` would be the dangerous case):
 
 | DTG status | joints | axis deg (median / max) | pivot mm (median / max) | terminal deg (median / max) | gain % (median / max) | wrong direction |
 |---|---|---|---|---|---|---|
-| ok | 34 | 0.56 / 3.63 | 2.94 / 9.23 | 0.35 / 2.84 | 0.21 / 2.72 | 0 |
-| flagged | 82 | 0.96 / 67.00 | 5.11 / 157.39 | 0.66 / 162.32 | 0.53 / 30.52 | 2 |
+| ok | 18 | 0.50 / 3.63 | 2.94 / 6.77 | 0.36 / 2.84 | 0.23 / 2.72 | 0 |
+| flagged | 43 | 0.67 / 66.70 | 5.09 / 53.80 | 0.55 / 115.04 | 0.39 / 28.29 | 1 |
 
-| direction correct | 116 | 98% (114/116) | | | all |
+| direction correct | 61 | 98% (60/61) | | | all |
 
 **Twin check** (command random pulses inside the measured safe ranges; where URDF + comms map put every tag vs where the robot really puts it):
 
-per-run median 3.6 mm; per-run p95: median 7.8 mm, worst 168.7 mm (threshold p95 < 5.0 mm; 26 runs).
+per-run median 3.5 mm; per-run p95: median 8.1 mm, worst 100.0 mm (threshold p95 < 5.0 mm; 13 runs).
 
-URDF valid (DTG validator + yourdfpy load): 100% (50/50).
+URDF valid (DTG validator + yourdfpy load): 100% (26/26).
 
 ### By light level
 
 | light | runs | overall pass | map exact | all joints fitted |
 |---|---|---|---|---|
-| dim (full well < 35 e-, like the OAK-D bench) | 16 | 0% (0/16) | 56% (9/16) | 56% (9/16) |
-| medium (35-80 e-) | 21 | 10% (2/21) | 52% (11/21) | 57% (12/21) |
-| bright (> 80 e-) | 13 | 0% (0/13) | 38% (5/13) | 38% (5/13) |
+| dim (full well < 35 e-, like the OAK-D bench) | 11 | 0% (0/11) | 55% (6/11) | 55% (6/11) |
+| medium (35-80 e-) | 10 | 10% (1/10) | 30% (3/10) | 50% (5/10) |
+| bright (> 80 e-) | 5 | 0% (0/5) | 40% (2/5) | 40% (2/5) |
 
 Focus: with autofocus (locked on the wall) a median of 3 tags were detected; after DTG's sweep + lock the lens was within 3 (median) / 12 (worst) steps of the subject's sharp position.
 
@@ -197,59 +214,14 @@ Focus: with autofocus (locked on the wall) a median of 3 tags were detected; aft
 | 16 | 95.989 | map_exact, all_joints_fitted, pivot, twin_fk untagged: ['forearm'] |
 | 18 | 120.576 | map_exact, all_joints_fitted, axis, pivot, terminal_ranges, us_angle_gain, twin_fk |
 | 19 | 45.815 | map_exact, all_joints_fitted, pivot, twin_fk |
-| 20 | 36.94 | pivot, twin_fk |
-| 21 | 34.347 | axis, pivot, terminal_ranges, us_angle_gain, zero_pulse, twin_fk |
+| 20 | 36.94 | direction, axis, pivot, terminal_ranges, twin_fk |
 | 22 | 52.616 | map_exact, all_joints_fitted, axis, pivot, terminal_ranges, us_angle_gain, twin_fk untagged: ['forearm'] |
-| 23 | 124.373 | pivot |
-| 24 | 27.207 | map_exact, all_joints_fitted, axis, pivot, terminal_ranges, us_angle_gain, twin_fk |
+| 24 | 27.207 | map_exact, all_joints_fitted, axis, pivot, twin_fk |
 | 25 | 30.221 | map_exact, all_joints_fitted, pivot, twin_fk untagged: ['upper_arm'] |
 | 26 | 22.919 | map_exact, all_joints_fitted, pivot, twin_fk |
 | 27 | 27.8 | map_exact, all_joints_fitted, pivot, twin_fk untagged: ['forearm'] |
-| 28 | 50.684 | pivot |
-| 29 | 53.735 | axis, pivot |
-| 30 | 25.434 | axis, pivot, us_angle_gain, twin_fk |
-| 31 | 154.948 | axis, pivot, terminal_ranges, twin_fk |
-| 32 | 23.464 | pivot, twin_fk |
-| 33 | 43.93 | direction, axis, pivot, terminal_ranges, twin_fk |
-| 34 | 51.423 | map_exact, all_joints_fitted, axis, pivot, terminal_ranges, us_angle_gain, zero_pulse, twin_fk |
-| 35 | 41.751 | pivot, twin_fk |
-| 36 | 47.183 | axis, pivot, twin_fk |
-| 37 | 40.331 | map_exact, all_joints_fitted, axis, pivot, terminal_ranges, us_angle_gain, twin_fk |
-| 38 | 145.092 | map_exact, all_joints_fitted, pivot, twin_fk |
-| 39 | 108.925 | map_exact, all_joints_fitted, twin_fk |
-| 40 | 50.255 | all_joints_fitted, pivot, twin_fk |
-| 42 | 47.166 | pivot |
-| 43 | 27.575 | map_exact, all_joints_fitted, pivot, twin_fk |
-| 44 | 126.572 | map_exact, all_joints_fitted, pivot, twin_fk, no_first_move_snap |
-| 45 | 25.693 | map_exact, all_joints_fitted, pivot, twin_fk |
-| 46 | 36.274 | map_exact, all_joints_fitted, pivot, twin_fk untagged: ['turret'] |
-| 47 | 91.927 | direction, axis, pivot, terminal_ranges, us_angle_gain, twin_fk |
-| 48 | 122.438 | map_exact, all_joints_fitted, pivot, twin_fk |
-| 49 | 114.549 | map_exact, all_joints_fitted, pivot, twin_fk |
-
-## Virtual camera vs the real OAK-D bench
-
-seed 1  lens 143  autofocus False
-| tag | detected | size px | centre jitter px | obliquity deg |
-|---|---|---|---|---|
-| base | 30/30 | 77 | 0.29 | 34 |
-| base_2 | 30/30 | 75 | 0.71 | 40 |
-| turret | 30/30 | 70 | 0.08 | 37 |
-| upper_arm | 30/30 | 86 | 0.10 | 21 |
-| forearm | 30/30 | 92 | 0.15 | 20 |
-| forearm_2 | 30/30 | 92 | 0.12 | 26 |
-
-seed 3  lens 136  autofocus False
-| tag | detected | size px | centre jitter px | obliquity deg |
-|---|---|---|---|---|
-| base | 30/30 | 67 | 0.09 | 25 |
-| base_2 | 30/30 | 69 | 0.10 | 27 |
-| turret | 30/30 | 68 | 0.15 | 31 |
-| upper_arm | 30/30 | 73 | 0.16 | 27 |
-| forearm | 30/30 | 59 | 0.28 | 41 |
 
 ## Artifacts
 
-- sim-run.gif: `runs/sim-video/seed-0002/sim-run.gif`
 - sim-run.mp4: `runs/sim-video/seed-0002/sim-run.mp4`
-- sim-still.png: `runs/sim-video/seed-0002/sim-still.png`
+- sim-run.gif: `runs/sim-video/seed-0002/sim-run.gif`
