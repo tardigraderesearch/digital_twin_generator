@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "digital-twin-generator"
+version = "0.1.0.dev0"
+description = "Built robot to verified, sim-ready model: scan health check, camera-observed wiggle and ROM, scan segmentation by linkage, URDF export. Private."
+readme = "README.md"
+license = { text = "Proprietary - all rights reserved" }
+authors = [{ name = "evilhobo1911" }]
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "trimesh>=4.0",
+  "matplotlib>=3.8",
+  "networkx>=3.0",
+  "opencv-contrib-python-headless>=4.8",
+  "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "yourdfpy>=0.0.56"]
+
+[project.scripts]
+dtg = "dtg.cli:main"
+
+[project.gui-scripts]
+dtg-gui = "dtg.gui:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dtg = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
