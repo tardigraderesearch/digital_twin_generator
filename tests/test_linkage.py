@@ -139,7 +139,7 @@ def test_inconsistent_two_sided_motion_is_not_a_joint():
     other; it was grouped with the turret. Real wiggles move back and forth."""
     log = generate(seed=0)
     frames = log.select(phase="wiggle", channel=6)
-    shift = {"wiggle_plus": np.array([0.0035, 0, 0]), "wiggle_minus": np.array([0.011, 0.002, 0])}
+    shift = {"wiggle_plus": np.array([0.008, 0, 0]), "wiggle_minus": np.array([0.026, 0.002, 0])}
     for f in frames:
         if f.event in shift:
             f.poses[5] = f.poses[5].copy()
