@@ -117,13 +117,21 @@ def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detect
     return poses, errors
 
 
-def sharpness(image, roi=None) -> float:
-    """Variance of the Laplacian over roi=(x, y, w, h) (default: the middle half of the frame)."""
+def sharpness(image, roi=None, *, presmooth: float = 1.5) -> float:
+    """Focus measure: variance of the Laplacian of a lightly smoothed image
+    (LoG) over roi=(x, y, w, h), default the middle half of the frame.
+
+    The smoothing matters in dim rooms: at high gain, plain Laplacian
+    variance is dominated by sensor noise and shows no focus peak at all.
+    """
     import cv2
-    gray = preprocess(image)
+    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     x, y, rw, rh = roi or (w // 4, h // 4, w // 2, h // 2)
-    return float(cv2.Laplacian(gray[y:y + rh, x:x + rw], cv2.CV_64F).var())
+    crop = gray[y:y + rh, x:x + rw].astype(np.float32)
+    if presmooth > 0:
+        crop = cv2.GaussianBlur(crop, (0, 0), presmooth)
+    return float(cv2.Laplacian(crop, cv2.CV_32F).var())
 
 
 @dataclass
@@ -136,7 +144,7 @@ class FocusResult:
         return {"lens": self.lens, "peak_ratio": self.peak_ratio, "scores": {str(k): v for k, v in self.scores.items()}}
 
 
-def focus_sweep(cap, *, positions=range(80, 250, 15), refine_step: int = 5, roi=None, frames: int = 2,
+def focus_sweep(cap, *, positions=range(80, 250, 15), refine_step: int = 5, roi=None, frames: int = 3,
                 settle_frames: int = 2, set_focus=None, min_peak_ratio: float = 1.5) -> FocusResult:
     """Sweep the lens, score sharpness on the robot region, lock manual focus at the peak.
 
@@ -157,14 +165,14 @@ def focus_sweep(cap, *, positions=range(80, 250, 15), refine_step: int = 5, roi=
 
     def score(position) -> float:
         set_focus(position)
-        values = []
+        images = []
         for i in range(settle_frames + frames):
             ok, image = cap.read()
             if ok and i >= settle_frames:
-                values.append(sharpness(image, roi))
-        if not values:
+                images.append(preprocess(image).astype(np.float32))
+        if not images:
             raise RuntimeError("camera returned no frames during the focus sweep")
-        return float(np.mean(values))
+        return sharpness(np.mean(images, axis=0), roi)   # averaging frames also beats noise down
 
     scores = {int(p): score(int(p)) for p in positions}
     best = max(scores, key=scores.get)

@@ -70,7 +70,8 @@ class LensCamera:
 
     def __init__(self, sharp=140, autofocus_lens=95):
         rng = np.random.default_rng(0)
-        self.base = (rng.random((240, 320)) > 0.5).astype(np.uint8) * 255
+        blocks = (rng.random((60, 80)) > 0.5).astype(np.uint8) * 255
+        self.base = cv2.resize(blocks, (320, 240), interpolation=cv2.INTER_NEAREST)
         self.sharp, self.af, self.lens = sharp, True, autofocus_lens
 
     def set(self, prop, value):
@@ -109,3 +110,22 @@ def test_tracker_accepts_a_capture_object():
     assert tracker.cap is c
     tracker.lock_focus(positions=range(80, 250, 20))
     assert tracker.focus.lens == c.lens
+
+
+def test_focus_sweep_survives_high_gain_noise():
+    """Dim room, high ISO: plain Laplacian variance is all noise; the LoG measure still peaks."""
+    class Noisy(LensCamera):
+        rng = np.random.default_rng(1)
+
+        def read(self):
+            ok, img = super().read()
+            noisy = img.astype(np.float32) * 0.03 + 60 + self.rng.normal(0, 12, img.shape)
+            return True, np.clip(noisy, 0, 255).astype(np.uint8)
+    c = Noisy(sharp=150)
+    plain = []
+    for lens in (90, 150, 210):
+        c.af, c.lens = False, lens
+        plain.append(cv2.Laplacian(c.read()[1], cv2.CV_64F).var())
+    assert max(plain) / min(plain) < 1.5                      # no usable peak without smoothing
+    result = cam.focus_sweep(Noisy(sharp=150), positions=range(80, 250, 15))
+    assert abs(result.lens - 150) <= 5
