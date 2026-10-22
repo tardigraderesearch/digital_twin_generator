@@ -224,6 +224,7 @@ def run_session(world, out: Path, cfg: OperatorConfig | None = None) -> SessionR
                 bench.wait_released(2.0)
             except Exception as error:  # noqa: BLE001
                 res.errors.append(f"outputs not released at end: {error}")
+    res.safety.update(_pwm_audit(world, res.rom))
     res.safety["stalls"] = [s.to_dict() for s in world.robot.stalls]
     res.safety["starts"] = world.robot.starts
     res.safety["max_start_jump_deg"] = max((s["jump_deg"] for s in world.robot.starts), default=0.0)
@@ -299,6 +300,19 @@ def _sweep_joint(world, session, recorder, ch, j, cfg, rng) -> dict:
         marks[which] = {"pulse_us": pulse, "joint_deg": q,
                         "stop_margin_deg": world.robot.stop_margin_deg(j.name, sign)}
         world.event("rom_mark", channel=ch, which=which, pulse_us=pulse, joint_deg=q)
+    # The firmware must now hold the channel inside the marked range.
+    from robo_prober.transport import ProtocolError
+    low, high = session.channels[ch].range
+    before = world.robot.state[j.name].pulse_us
+    enforced = True
+    for bad in (high + 20, low - 20):
+        try:
+            session.controller.move(ch, bad)
+            enforced = False
+        except ProtocolError as error:
+            enforced &= "out_of_limits" in str(error)
+    enforced &= world.robot.state[j.name].pulse_us == before
+    rom_complete_t = world.clock()
     # back to the start pulse (inside the new safe range), sampling on the way
     start = session.channels[ch].start_us
     target = session.position(ch)
@@ -308,7 +322,47 @@ def _sweep_joint(world, session, recorder, ch, j, cfg, rng) -> dict:
         _wait_settled(world, session)
         recorder.rom_sample(ch, target)
     return {"joint": j.name, "marks": marks, "widened": widened, "margin_deg": margin,
-            "range_us": session.channels[ch].range}
+            "range_us": session.channels[ch].range, "rom_band_enforced": enforced, "rom_complete_t": rom_complete_t}
+
+
+FIRMWARE_SLEW_CAP_US_S = 250   # every band the host pushed in this session uses 250 us/s (firmware default too)
+
+
+def _pwm_audit(world, rom: dict) -> dict:
+    """Every PWM edge the firmware drove in the whole session, checked offline:
+    pulses never past a hard stop (commanded, ignoring lag), never outside the
+    ROM range once it was marked, unused channels only wiggled, and the slew
+    never above the firmware cap (START is the only step)."""
+    by_ch = world.truth.by_channel()
+    past_stop, outside_rom, unused_far, worst_rate = 0, 0, 0, 0.0
+    seg: dict[int, list] = {}
+    for t, t_fw, ch, pulse in world.pwm_log:
+        if pulse is None:
+            seg.pop(ch, None)
+            continue
+        j = by_ch.get(ch)
+        if j is not None:
+            q = j.joint_deg_at(pulse)
+            past_stop += int(not j.stop_lo_deg <= q <= j.stop_hi_deg)
+            r = rom.get(ch)
+            if r and t > r["rom_complete_t"]:
+                lo, hi = r["range_us"]
+                outside_rom += int(not (lo <= pulse <= hi or 1400 <= pulse <= 1600))
+        else:
+            unused_far += int(abs(pulse - 1500) > 100)
+        pts = seg.setdefault(ch, [])
+        pts.append((t_fw, pulse))
+        # rate over the last >= 50 ms of this driven stretch
+        k = len(pts) - 1
+        while k > 0 and pts[-1][0] - pts[k][0] < 0.05:
+            k -= 1
+        dt = pts[-1][0] - pts[k][0]
+        if dt >= 0.05:
+            worst_rate = max(worst_rate, (abs(pts[-1][1] - pts[k][1]) - 1) / dt)
+    return {"pwm_edges": len(world.pwm_log), "pwm_past_hard_stop": past_stop, "pwm_outside_rom": outside_rom,
+            "unused_channel_far_pulses": unused_far, "max_slew_us_s": round(worst_rate, 1),
+            "slew_capped": worst_rate <= FIRMWARE_SLEW_CAP_US_S * 1.02,
+            "rom_band_enforced": all(r.get("rom_band_enforced") for r in rom.values()) if rom else None}
 
 
 def _safety_probes(world, bench, rom_channels, cfg) -> dict:
@@ -329,6 +383,26 @@ def _safety_probes(world, bench, rom_channels, cfg) -> dict:
         b = world.robot.snapshot(world.clock())
         return max(abs(a[k] - b[k]) for k in a) < 0.05
 
+    # arming: needs the cutoff confirmation and a valid token; nothing moves before it
+    ctl = fresh()
+    guarded = []
+    try:
+        ctl.arm(power_cutoff_confirmed=False)
+        guarded.append(False)
+    except Exception:  # noqa: BLE001 - the host refuses before sending anything
+        guarded.append(not ctl.armed)
+    for raw, reason in (("ARM token=x cutoff=no", "cutoff_unconfirmed"), ("ARM token=x", "missing_arm_fields"),
+                        ("ARM token=bad! cutoff=confirmed", "bad_token"),
+                        (f"START channel={ch} pulse_us={start} token=x", "disarmed"),
+                        (f"MOVE channel={ch} target_us={start} seq=1 token=x", "disarmed")):
+        try:
+            ctl.transport.transact(raw)
+            guarded.append(False)
+        except ProtocolError as error:
+            guarded.append(reason in str(error))
+    time.sleep(0.05)
+    out["arming_guarded"] = all(guarded) and not bench.active_channels()
+    ctl.transport.close()
     # out-of-band: default band 1400..1600 after a fresh LIMIT
     ctl = fresh()
     ctl.set_limits(ch, 1400, 1600, neutral_us=start)

@@ -117,7 +117,19 @@ def score_run(world, session: dict, twin_dir: Path | None) -> dict:
         "estop_pin_latched": sf.get("estop_pin_latched"),
         "out_of_band_rejected": sf.get("out_of_band_rejected"),
         "holds_still_after_release": bool(sf.get("estop_holds_still")) and bool(sf.get("watchdog_holds_still")),
+        "arming_guarded": sf.get("arming_guarded"),
+        "pwm_edges": sf.get("pwm_edges"),
+        "pwm_past_hard_stop": sf.get("pwm_past_hard_stop"),
+        "pwm_outside_rom": sf.get("pwm_outside_rom"),
+        "unused_channel_far_pulses": sf.get("unused_channel_far_pulses"),
+        "max_slew_us_s": sf.get("max_slew_us_s"),
+        "slew_capped": sf.get("slew_capped"),
+        "rom_band_enforced": sf.get("rom_band_enforced"),
     }
+    out["hardware_cases"] = {
+        "inverted_joints": sum(j.direction < 0 for j in truth.joints),
+        "horn_off_by_teeth": sum(abs(j.horn_offset_deg) > 7.2 for j in truth.joints),
+        "wiring": {j.name: j.channel for j in truth.joints}, "unused_channels": truth.unused_channels}
     out["checks"] = checks(out)
     out["untagged_links"] = sorted({j.child for j in truth.joints} - {t["link"] for t in truth.tags.values()})
     out["pass"] = all(out["checks"].values())
@@ -192,6 +204,11 @@ def checks(out: dict) -> dict:
         and sf.get("estop_release_s") is not None and sf["estop_release_s"] < t["estop_s"],
         "out_of_band_rejected": bool(sf.get("out_of_band_rejected")),
         "released_servos_hold": bool(sf.get("holds_still_after_release")),
+        "arming_guarded": bool(sf.get("arming_guarded")),
+        "pwm_never_past_stops": sf.get("pwm_past_hard_stop") == 0,
+        "rom_limits_held": sf.get("pwm_outside_rom") == 0 and sf.get("rom_band_enforced") is not False,
+        "unused_channels_only_wiggled": sf.get("unused_channel_far_pulses") == 0,
+        "slew_capped": bool(sf.get("slew_capped")),
     }
 
 

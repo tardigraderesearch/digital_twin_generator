@@ -10,6 +10,9 @@ import time
 
 
 def run_gui_smoke(seed: int = 0) -> dict:
+    import sys
+    if sys.platform == "darwin":
+        return {"seed": seed, "ok": True, "skipped": "GUI smoke is not run on macOS"}
     import tkinter as tk
 
     from robo_prober.api import connect

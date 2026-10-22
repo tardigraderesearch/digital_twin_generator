@@ -33,6 +33,7 @@ class World:
     sharp_lens: float
     t0: float = field(default_factory=time.monotonic)
     log: list = field(default_factory=list)
+    pwm_log: list = field(default_factory=list)   # (world t, firmware t, channel, pulse or None)
 
     def clock(self) -> float:
         return time.monotonic() - self.t0
@@ -50,8 +51,10 @@ class World:
         """Start the real firmware core behind a pty; its PWM outputs drive the robot."""
         from robo_prober.firmware_bench import FirmwareBench
 
-        def on_pwm(_t_fw, channel, pulse):
-            self.robot.set_pulse(self.clock(), channel, pulse)
+        def on_pwm(t_fw, channel, pulse):
+            t = self.clock()
+            self.pwm_log.append((t, t_fw, channel, pulse))
+            self.robot.set_pulse(t, channel, pulse)
 
         bench = FirmwareBench(on_pwm=on_pwm)
         bench.open()
