@@ -72,9 +72,9 @@ def bot1_like_arm() -> SynthArm:
         0: ("base", _tag_pose((0.03, -0.045, 0.03), cam_dir, 10)),
         5: ("base", _tag_pose((-0.03, -0.05, 0.02), cam_dir, -20)),
         1: ("turret", _tag_pose((0.025, -0.03, 0.085), cam_dir, 30)),
-        2: ("upper_arm", _tag_pose((0.05, -0.02, 0.12), (0.6, -0.5, 0.8), 0)),
-        3: ("upper_arm", _tag_pose((0.08, -0.02, 0.115), (0.8, -0.6, 0.4), 45)),
-        4: ("forearm", _tag_pose((0.10, -0.02, 0.06), (1.0, -0.3, 0.1), 15)),
+        2: ("upper_arm", _tag_pose((0.045, -0.052, 0.111), (0.3, -1.0, 0.3), 0)),
+        3: ("upper_arm", _tag_pose((0.085, -0.052, 0.111), (0.5, -1.0, 0.2), 45)),
+        4: ("forearm", _tag_pose((0.10, -0.072, 0.06), (0.6, -1.0, 0.1), 15)),
     }
     return SynthArm(joints=joints, root="base", tags=tags, unused_channels=[1, 6])
 
@@ -214,3 +214,109 @@ def truth(arm: SynthArm) -> dict:
                           "zero_us": j.start_us}
     return {"root_tag": root_tag, "joints": joints, "unused_channels": arm.unused_channels,
             "tags": {str(k): l for k, (l, _) in arm.tags.items()}}
+
+
+# ------------------------------------------------------------------ synthetic scan
+
+# Link primitives at the zero pose, world frame, metres: ("box", lo, hi) or ("cyl", centre_xy, r, z0, z1)
+BOT1_LIKE_SHAPES = {
+    "base": [("cyl", (0.0, 0.0), 0.05, 0.0, 0.06)],
+    "turret": [("box", (-0.025, -0.032, 0.06), (0.025, 0.03, 0.105))],
+    "upper_arm": [("box", (-0.015, -0.052, 0.098), (0.115, -0.032, 0.124))],
+    "forearm": [("box", (0.088, -0.072, 0.03), (0.112, -0.052, 0.122))],
+}
+
+
+def _inside(shape, pts):
+    if shape[0] == "box":
+        lo, hi = np.asarray(shape[1]), np.asarray(shape[2])
+        return ((pts >= lo) & (pts <= hi)).all(axis=1)
+    _, c, r, z0, z1 = shape
+    return (np.hypot(pts[:, 0] - c[0], pts[:, 1] - c[1]) <= r) & (pts[:, 2] >= z0) & (pts[:, 2] <= z1)
+
+
+def synthetic_scan(arm: SynthArm | None = None, shapes: dict | None = None, *, pitch: float = 0.003,
+                   seed: int = 0):
+    """A fused one-piece 'scan' of the arm at its reference pose.
+
+    Returns dict with vertices (mm, in a scan frame unrelated to the model
+    frame), faces, true vertex link labels, tag centres in scan coordinates
+    (with 0.5 mm pick noise), and T_scan_world (incl. the x1000 scale)."""
+    import trimesh
+    arm = arm or bot1_like_arm()
+    shapes = shapes or BOT1_LIKE_SHAPES
+    rng = np.random.default_rng(seed)
+    start = {j.channel: float(j.start_us) for j in arm.joints}
+    motions = _link_motion(arm, start)
+    allpts = []
+    for link, prims in shapes.items():
+        for s in prims:
+            if s[0] == "box":
+                corners = np.array(np.meshgrid(*zip(s[1], s[2]))).reshape(3, -1).T
+            else:
+                corners = np.array([[s[1][0] + dx * s[2], s[1][1] + dy * s[2], z]
+                                    for dx in (-1, 1) for dy in (-1, 1) for z in (s[3], s[4])])
+            allpts.append(corners @ motions[link][:3, :3].T + motions[link][:3, 3])
+    allpts = np.vstack(allpts)
+    lo, hi = allpts.min(axis=0) - 2 * pitch, allpts.max(axis=0) + 2 * pitch
+    axes = [np.arange(lo[i], hi[i], pitch) for i in range(3)]
+    grid = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)
+    owner = np.full(len(grid), -1)
+    names = list(shapes)
+    for i, link in enumerate(names):
+        local = (grid - motions[link][:3, 3]) @ motions[link][:3, :3]  # world -> zero-pose link coords
+        for s in shapes[link]:
+            owner[_inside(s, local) & (owner < 0)] = i
+    shape = [len(a) for a in axes]
+    occ = (owner >= 0).reshape(shape)
+    verts_world, faces = _voxel_surface(occ, lo, pitch)
+    # true label = owner of the nearest occupied voxel centre
+    from scipy.spatial import cKDTree
+    occ_idx = np.flatnonzero(owner >= 0)
+    _, nn = cKDTree(grid[occ_idx]).query(verts_world)
+    truth_labels = np.array(names, dtype=object)[owner[occ_idx][nn]]
+    # an arbitrary scan frame, millimetres
+    R = Rotation.from_euler("zyx", [40, -15, 120], degrees=True).as_matrix()
+    T_scan_world = np.eye(4)
+    T_scan_world[:3, :3] = 1000.0 * R
+    T_scan_world[:3, 3] = [12.0, -40.0, 85.0]
+    verts_scan = verts_world @ T_scan_world[:3, :3].T + T_scan_world[:3, 3]
+    tags_scan = {}
+    for k, (link, T0) in arm.tags.items():
+        centre_world = (motions[link] @ T0)[:3, 3]
+        tags_scan[k] = centre_world @ T_scan_world[:3, :3].T + T_scan_world[:3, 3] + rng.normal(0, 0.5, 3)
+    return {"vertices": verts_scan, "faces": faces, "truth_labels": truth_labels,
+            "tag_centres_scan": tags_scan, "T_scan_world": T_scan_world}
+
+
+def _voxel_surface(occ: np.ndarray, origin, pitch):
+    """Exposed faces of an occupancy grid as one connected triangle mesh
+    (shared corner vertices, outward winding)."""
+    pad = np.pad(occ, 1)
+    quads = []
+    # (axis, sign): corner offsets of the face, counter-clockwise seen from outside
+    for axis in range(3):
+        for sign in (1, -1):
+            nb = np.roll(pad, -sign, axis=axis)
+            exposed = pad & ~nb
+            idx = np.argwhere(exposed[1:-1, 1:-1, 1:-1])
+            if not len(idx):
+                continue
+            u, v = (axis + 1) % 3, (axis + 2) % 3
+            base = idx.copy()
+            if sign > 0:
+                base[:, axis] += 1
+            c = []
+            for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                q = base.copy()
+                q[:, u] += du
+                q[:, v] += dv
+                c.append(q)
+            if sign < 0:
+                c = c[::-1]
+            quads.append(np.stack(c, axis=1))
+    quads = np.concatenate(quads)
+    corners, inv = np.unique(quads.reshape(-1, 3), axis=0, return_inverse=True)
+    q = inv.reshape(-1, 4)
+    faces = np.concatenate([q[:, [0, 1, 2]], q[:, [0, 2, 3]]])
+    return np.asarray(origin) + corners * pitch - pitch / 2, faces

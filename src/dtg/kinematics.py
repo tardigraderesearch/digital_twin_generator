@@ -94,13 +94,15 @@ class KinematicModel:
     joints: list[JointFit]
     channels: list[dict]          # wiggle channel results (incl. no_response)
     flags: list[str]
+    link_offsets: dict = field(default_factory=dict)  # link -> {tag id: T_linkframe_tag}
 
     def joint(self, name: str) -> JointFit:
         return next(j for j in self.joints if j.name == name)
 
     def to_dict(self) -> dict:
         return {"schema": "dtg.kinematics/1", "frame": "root link frame at the reference (scan) pose, metres",
-                "root": self.root, "links": {k: {"tags": self.link_tags[k], "ref_pose_model": v}
+                "root": self.root, "links": {k: {"tags": self.link_tags[k], "ref_pose_model": v,
+                                                 "tag_offsets": self.link_offsets.get(k, {})}
                                              for k, v in self.link_ref_model.items()},
                 "joints": [j.to_dict() for j in self.joints], "channels": self.channels, "flags": self.flags}
 
@@ -261,4 +263,5 @@ def infer_kinematics(log: ObservationLog, wiggle: WiggleResult, params: RomParam
         joints.append(fit)
     return KinematicModel(root=root.name, link_ref_model=link_ref_model,
                           link_tags={l.name: l.tags for l in wiggle.links}, joints=joints,
-                          channels=[c.to_dict() for c in wiggle.channels], flags=flags)
+                          channels=[c.to_dict() for c in wiggle.channels], flags=flags,
+                          link_offsets={l.name: l.offsets for l in wiggle.links})
