@@ -37,6 +37,7 @@ class HealthParams:
     plane_min_area_frac: float = 0.08
     plane_one_sided_frac: float = 0.85
     plane_max_count: int = 2
+    plane_min_footprint_ratio: float = 1.5  # a support is wider than the robot standing on it
     low_feature_mm: float = 10.0       # features lower than this outside the footprint are support
     footprint_band_mm: float = 10.0    # slab above low_feature_mm that defines the robot footprint
     footprint_margin_mm: float = 2.0
@@ -84,7 +85,7 @@ class HealthReport:
         lines = []
         def line(ok: bool, text: str) -> None:
             lines.append(("[ok]   " if ok else "[fix]  ") + text)
-        planes = self.by_kind("support_plane")
+        planes = [f for f in self.by_kind("support_plane") if f.fix]
         line(not planes, f"Turntable / floor: {len(planes)} support plane(s) welded to the scan"
              + (" (toggle 'Remove planes')" if planes else ""))
         wires = self.by_kind("wire")
@@ -242,6 +243,16 @@ def detect_support_planes(scan: Scan, centres, normals, weights, p: HealthParams
                 footprint_area = float(hull.volume)
             except Exception:  # noqa: BLE001 - degenerate footprint: treat all low features as support
                 low_outside = low
+        plane_area = float(weights[on_plane].sum())
+        if footprint_area > 0 and plane_area < p.plane_min_footprint_ratio * footprint_area:
+            # flat underside of the robot itself (e.g. a base plate), not a turntable or floor
+            findings.append(Finding(
+                kind="support_plane", label="flat underside (kept)", severity="info", fix=None,
+                message="A flat face under the robot no wider than its footprint: treated as the robot's own base.",
+                metrics={"normal": normal.tolist(), "point": centre.tolist(), "plane_area_units2": plane_area,
+                         "footprint_area_units2": footprint_area}, **_ids(scan, on_plane)))
+            available &= ~on_plane
+            continue
         mask = on_plane | under | low_outside
         label = "turntable / floor" if number == 0 else f"support plane {number + 1}"
         frac = weights[mask].sum() / total
@@ -497,10 +508,11 @@ def check_scan(scan: Scan, params: HealthParams | None = None) -> HealthReport:
 
 @dataclass
 class FixOptions:
-    remove_planes: bool = True
-    strip_wires: bool = True
-    fill_holes: bool = True
-    drop_fragments: bool = True
+    """Every fix is opt-in: the operator reviews the preview, then toggles."""
+    remove_planes: bool = False
+    strip_wires: bool = False
+    fill_holes: bool = False
+    drop_fragments: bool = False
 
 
 @dataclass
