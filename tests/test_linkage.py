@@ -131,3 +131,19 @@ def test_second_base_tag_stands_in_for_a_hidden_root():
     got = mapping(result)
     for j in truth.values():
         assert got[j["channel"]][:2] == ("mapped", j["child"]), got
+
+
+def test_inconsistent_two_sided_motion_is_not_a_joint():
+    """Found by the virtual bench: a base tag crossed the threshold on one side by
+    noise (3.05 vs 3.0 mm) and was shoved 11 mm by a partial occlusion on the
+    other; it was grouped with the turret. Real wiggles move back and forth."""
+    log = generate(seed=0)
+    frames = log.select(phase="wiggle", channel=6)
+    shift = {"wiggle_plus": np.array([0.0035, 0, 0]), "wiggle_minus": np.array([0.011, 0.002, 0])}
+    for f in frames:
+        if f.event in shift:
+            f.poses[5] = f.poses[5].copy()
+            f.poses[5][:3, 3] += shift[f.event]          # same direction both times, 3x different
+    got = mapping(infer_linkage(log, parse_markers(log.header["markers"])))
+    assert got[6][0] in ("no_response", "needs_confirmation")
+    assert got[6][0] != "mapped"

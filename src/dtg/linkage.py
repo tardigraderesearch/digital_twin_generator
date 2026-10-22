@@ -13,8 +13,8 @@ tracks every tag. From the log:
 5. direction: sign of the rotation about the (canonicalised) rough axis when
    the pulse goes up.
 
-A tag counts as moved only if it moves on both sides of the wiggle; a large
-one-sided move is flagged. Never guesses: channels where nothing moves are
+A tag counts as moved only if it moves on both sides of the wiggle, in
+opposite directions and by similar amounts; any other large move is flagged. Never guesses: channels where nothing moves are
 "no_response"; two channels
 claiming one child, a missing intermediate tag, occluded tags or a
 non-rigid tag group are flagged "needs_confirmation" with a reason.
@@ -208,17 +208,26 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
                 occluded[c].add(k)
                 continue
             B = mean_pose(base)
-            sides = [_delta(B, mean_pose(v)) for v in ends.values()]
+            ends_mean = [mean_pose(v) for v in ends.values()]
+            sides = [_delta(B, E) for E in ends_mean]
             dr = max(r for r, _ in sides)
             dt = max(t for _, t in sides)
             motion[(c, k)] = (dr, dt)
-            # A joint wiggle moves its child on BOTH sides of the base pulse. One
-            # capture over the threshold is noise, a glint or a partial occlusion
-            # (ignored); a large one-sided move (a hard stop?) is flagged.
-            over = [r > rot_thr or t > trans_thr for r, t in sides]
-            if all(over):
+            # A joint wiggle moves its child on BOTH sides of the base pulse, in
+            # opposite directions and by similar amounts. Anything else is noise,
+            # a glint or a partial occlusion (ignored when small), or a hard stop
+            # or bad detection (flagged when large).
+            score = [max(r / rot_thr, t / trans_thr) for r, t in sides]
+            rot_led = sum(r / rot_thr for r, _ in sides) >= sum(t / trans_thr for _, t in sides)
+            if rot_led:
+                vec = [Rotation.from_matrix((E @ inv(B))[:3, :3]).as_rotvec() for E in ends_mean]
+            else:
+                vec = [E[:3, 3] - B[:3, 3] for E in ends_mean]
+            opposite = float(np.dot(vec[0], vec[1])) < 0
+            balanced = max(score) < 3 * min(score)
+            if min(score) > 1 and opposite and balanced:
                 moved[c].add(k)
-            elif dr > 2 * rot_thr or dt > 2 * trans_thr:
+            elif max(score) > 2:
                 one_sided[c].add(k)
         if root not in set().union(*[set(f.poses) for f in fr]):
             flags.append(f"channel {c}: root tag {root} never seen during its wiggle")
@@ -297,8 +306,8 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
         if res.occluded_tags:
             res.reasons.append(f"every tag of a link was hidden during this wiggle: {res.occluded_tags}")
         if one_sided[c]:
-            res.reasons.append(f"tags {sorted(one_sided[c])} moved on one side of the wiggle only: "
-                               "end stop, slipping horn or a bad detection; check by eye")
+            res.reasons.append(f"tags {sorted(one_sided[c])} moved inconsistently (one side only, or not back and "
+                               "forth): end stop, slipping horn, partial occlusion or a bad detection; check by eye")
         if not moved[c]:
             if res.occluded_tags or one_sided[c]:
                 res.status = "needs_confirmation"
