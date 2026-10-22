@@ -6,6 +6,7 @@ robo-prober v0.2's Controller API (set_pulse / position / armed) and will
 be validated when a camera and an armed controller are on the bench.
 
     tracker  = ArucoTracker(0, markers, CameraIntrinsics.load("camera.json"))
+    tracker.lock_focus()                          # manual focus sweep; autofocus is not trusted
     recorder = ObservationRecorder(tracker, "runs/bot1/observations.jsonl", markers)
     recorder.reference()                          # robot in the scanned pose
     for ch in range(16):                          # WIGGLE, controller already armed by the operator
@@ -14,10 +15,17 @@ be validated when a camera and an armed controller are on the bench.
     recorder.rom_sample(ch, pulse_us)            # slider settled
     recorder.rom_mark(ch, 1, pulse_us)           # Set ROM 1 pressed (2 for Set ROM 2)
 
+Focus: on the real bench (OAK-D, 2026-10-22) autofocus locked on the
+background and blurred every tag below detection. lock_focus() sweeps the
+lens, scores Laplacian-variance sharpness on the robot region, locks manual
+focus at the peak and refuses to continue without a clear peak. Detection
+uses CLAHE and sub-pixel corner refinement, as on that bench.
+
 Safety: this module never arms anything. wiggle_channel refuses an unarmed
 controller, moves one channel at a time by a small delta (default 80 us,
 clamped to 150 us), waits for the controller's slew-limited move to settle
-and always returns the channel to its start pulse, also on error.
+and ends at the start pulse. On any error it stops the controller (all
+outputs released) instead of attempting a recovery move.
 """
 from __future__ import annotations
 
@@ -56,19 +64,37 @@ def _dictionary(name: str):
     return cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, name))
 
 
+def make_detector(dictionary: str, *, subpix: bool = True):
+    """ArUco detector; sub-pixel corner refinement on by default (it was on for the real bench data)."""
+    import cv2
+    params = cv2.aruco.DetectorParameters()
+    if subpix:
+        params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    return cv2.aruco.ArucoDetector(_dictionary(dictionary), params)
+
+
+def preprocess(image, *, clahe: bool = False):
+    """Greyscale, optionally contrast-equalised (CLAHE) for dim, noisy rooms."""
+    import cv2
+    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    if clahe:
+        gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+    return gray
+
+
 def tag_object_points(size_m: float) -> np.ndarray:
     """Marker corners in the tag frame (OpenCV order: TL, TR, BR, BL; z out of the face)."""
     h = size_m / 2
     return np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], dtype=np.float64)
 
 
-def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detector=None):
+def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detector=None, *, clahe: bool = False):
     """Detect the markers.json tags in one image. Returns ({id: T_camera_tag}, {id: reprojection px})."""
     import cv2
     if markers.tag_size_mm is None:
         raise ValueError("markers.json has no tag_size_mm; pose needs the printed black-square size")
-    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    detector = detector or cv2.aruco.ArucoDetector(_dictionary(markers.dictionary), cv2.aruco.DetectorParameters())
+    gray = preprocess(image, clahe=clahe)
+    detector = detector or make_detector(markers.dictionary)
     corners, ids, _ = detector.detectMarkers(gray)
     poses, errors = {}, {}
     if ids is None:
@@ -91,16 +117,91 @@ def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detect
     return poses, errors
 
 
-class ArucoTracker:
-    """Grab settled frames from an OpenCV camera and average tag poses."""
+def sharpness(image, roi=None) -> float:
+    """Variance of the Laplacian over roi=(x, y, w, h) (default: the middle half of the frame)."""
+    import cv2
+    gray = preprocess(image)
+    h, w = gray.shape
+    x, y, rw, rh = roi or (w // 4, h // 4, w // 2, h // 2)
+    return float(cv2.Laplacian(gray[y:y + rh, x:x + rw], cv2.CV_64F).var())
 
-    def __init__(self, source, markers: Markers, intrinsics: CameraIntrinsics, *, max_reproj_px: float = 1.5):
+
+@dataclass
+class FocusResult:
+    lens: int
+    scores: dict
+    peak_ratio: float          # best score / median score: a clear peak is well above 1
+
+    def to_dict(self) -> dict:
+        return {"lens": self.lens, "peak_ratio": self.peak_ratio, "scores": {str(k): v for k, v in self.scores.items()}}
+
+
+def focus_sweep(cap, *, positions=range(80, 250, 15), refine_step: int = 5, roi=None, frames: int = 2,
+                settle_frames: int = 2, set_focus=None, min_peak_ratio: float = 1.5) -> FocusResult:
+    """Sweep the lens, score sharpness on the robot region, lock manual focus at the peak.
+
+    ``cap`` is anything with read() (cv2.VideoCapture, or an adapter for a
+    camera SDK). Lens control defaults to the OpenCV properties
+    (CAP_PROP_AUTOFOCUS=0, CAP_PROP_FOCUS); pass ``set_focus(position)`` for
+    cameras that need their own call (e.g. an OAK-D CameraControl
+    setManualFocus). Raises RuntimeError when no position stands out, because
+    measuring with blurred tags gives wrong poses or none.
+    """
+    import cv2
+    if set_focus is None:
+        cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+
+        def set_focus(position):
+            if not cap.set(cv2.CAP_PROP_FOCUS, position):
+                raise RuntimeError("camera refused manual focus (is autofocus still on?)")
+
+    def score(position) -> float:
+        set_focus(position)
+        values = []
+        for i in range(settle_frames + frames):
+            ok, image = cap.read()
+            if ok and i >= settle_frames:
+                values.append(sharpness(image, roi))
+        if not values:
+            raise RuntimeError("camera returned no frames during the focus sweep")
+        return float(np.mean(values))
+
+    scores = {int(p): score(int(p)) for p in positions}
+    best = max(scores, key=scores.get)
+    step = int(np.median(np.diff(sorted(scores)))) if len(scores) > 1 else refine_step
+    for p in range(best - step + refine_step, best + step, refine_step):
+        if p not in scores and 0 <= p <= 255:
+            scores[p] = score(p)
+    best = max(scores, key=scores.get)
+    ratio = scores[best] / max(float(np.median(list(scores.values()))), 1e-9)
+    set_focus(best)
+    if ratio < min_peak_ratio:
+        raise RuntimeError(f"focus sweep found no clear peak (best/median {ratio:.2f}); check the region and light")
+    return FocusResult(lens=best, scores=dict(sorted(scores.items())), peak_ratio=float(ratio))
+
+
+class ArucoTracker:
+    """Grab settled frames from a camera and average tag poses.
+
+    ``source`` is an OpenCV device index / URL, or an already-open capture
+    object with read() (a camera SDK adapter, or a virtual camera).
+    """
+
+    def __init__(self, source, markers: Markers, intrinsics: CameraIntrinsics, *, max_reproj_px: float = 1.5,
+                 clahe: bool = True, subpix: bool = True):
         import cv2
-        self.cap = cv2.VideoCapture(source)
-        if not self.cap.isOpened():
+        self.cap = source if hasattr(source, "read") else cv2.VideoCapture(source)
+        if hasattr(self.cap, "isOpened") and not self.cap.isOpened():
             raise RuntimeError(f"cannot open camera {source!r}")
         self.markers, self.intrinsics, self.max_reproj_px = markers, intrinsics, max_reproj_px
-        self.detector = cv2.aruco.ArucoDetector(_dictionary(markers.dictionary), cv2.aruco.DetectorParameters())
+        self.clahe = clahe
+        self.detector = make_detector(markers.dictionary, subpix=subpix)
+        self.focus: FocusResult | None = None
+
+    def lock_focus(self, **kwargs) -> FocusResult:
+        """Manual focus sweep + lock (see focus_sweep). Run before the reference capture."""
+        self.focus = focus_sweep(self.cap, **kwargs)
+        return self.focus
 
     def capture(self, frames: int = 8):
         per_tag: dict[int, list] = {}
@@ -109,7 +210,7 @@ class ArucoTracker:
             ok, image = self.cap.read()
             if not ok:
                 continue
-            poses, e = estimate_poses(image, self.markers, self.intrinsics, self.detector)
+            poses, e = estimate_poses(image, self.markers, self.intrinsics, self.detector, clahe=self.clahe)
             for k, T in poses.items():
                 if e[k] <= self.max_reproj_px:   # drop high-reprojection (likely flipped) detections
                     per_tag.setdefault(k, []).append(T)
@@ -129,8 +230,10 @@ class ObservationRecorder:
         self.tracker, self.path, self.settle_s = tracker, Path(path), settle_s
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.t0 = time.monotonic()
-        header = new_header("live", markers=markers.to_dict(),
-                            camera=camera or (tracker.intrinsics.to_dict() if hasattr(tracker, "intrinsics") else {}))
+        camera = camera or (tracker.intrinsics.to_dict() if hasattr(tracker, "intrinsics") else {})
+        if getattr(tracker, "focus", None) is not None:
+            camera = {**camera, "focus": tracker.focus.to_dict()}
+        header = new_header("live", markers=markers.to_dict(), camera=camera)
         self.path.write_text(json.dumps(header) + "\n")
 
     def _write(self, phase, event, channel=None, pulse=None) -> Frame:
@@ -147,20 +250,34 @@ class ObservationRecorder:
 
     def wiggle_channel(self, controller, channel: int, *, start_us: int, delta_us: int = 80,
                        slew_us_s: float = 200.0) -> list[Frame]:
+        """base, +delta, base, -delta, base on one channel, a settled capture at each.
+
+        A channel that is not driven yet is started at ``start_us`` first
+        (robo-prober v0.2 START: the first pulse is explicit, so choose the
+        pulse the servo is already at). The wiggle ends at ``start_us``. On
+        any error the controller is stopped (every output released) and the
+        error re-raised: no recovery move after a fault, as in robo-prober.
+        """
         if not getattr(controller, "armed", False):
             raise RuntimeError("controller is not armed: the operator arms it (robo-prober) before the wiggle")
         delta = int(min(abs(delta_us), MAX_WIGGLE_US))
         wait = delta / slew_us_s + self.settle_s
         frames = []
         try:
+            if hasattr(controller, "position") and controller.position(channel) is None:
+                controller.start(channel, start_us)
             for event, pulse in (("wiggle_base", start_us), ("wiggle_plus", start_us + delta),
                                  ("wiggle_base", start_us), ("wiggle_minus", start_us - delta),
                                  ("wiggle_base", start_us)):
                 controller.set_pulse(channel, pulse)
                 time.sleep(wait)
                 frames.append(self._write("wiggle", event, channel, pulse))
-        finally:
-            controller.set_pulse(channel, start_us)
+        except BaseException:
+            try:
+                controller.stop()
+            except Exception:  # noqa: BLE001 - the firmware watchdog releases outputs too
+                pass
+            raise
         return frames
 
     def rom_sample(self, channel: int, pulse_us: float) -> Frame:

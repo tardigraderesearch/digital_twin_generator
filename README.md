@@ -35,8 +35,12 @@ use the camera alone.
 The wiring is unknown, so the wiggle comes first. For each IO channel, one at
 a time, the controller (already armed by the operator) moves the pulse a
 little: base, +delta, base, -delta, base. The default delta is 80 µs and it is
-clamped to 150 µs. The channel always goes back to its start pulse, even if
-something fails. The camera tracks every tag. `infer_linkage` then works
+clamped to 150 µs. A channel that is not driven yet is first started at its
+start pulse (robo-prober's explicit START). The wiggle ends at the start
+pulse; if anything fails, the controller is stopped (all outputs released)
+rather than moved back. Before the wiggle, `ArucoTracker.lock_focus()` sweeps
+the lens and locks manual focus on the robot: on the real bench, autofocus
+locked on the background and no tag was detected. The camera tracks every tag. `infer_linkage` then works
 through these steps:
 
 1. Measure each tag's motion relative to the root (base) tag. Motion counts

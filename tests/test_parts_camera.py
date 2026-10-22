@@ -75,6 +75,9 @@ class FakeController:
         if self.fail_at is not None and len(self.sent) == self.fail_at:
             raise RuntimeError("link lost")
 
+    def stop(self):
+        self.sent.append("STOP")
+
 
 def test_recorder_wiggle_safety(tmp_path):
     rec = ObservationRecorder(FakeTracker(), tmp_path / "obs.jsonl", MARKERS, settle_s=0)
@@ -87,7 +90,7 @@ def test_recorder_wiggle_safety(tmp_path):
     ctl = FakeController(fail_at=2)
     with pytest.raises(RuntimeError):
         rec.wiggle_channel(ctl, 3, start_us=1400, slew_us_s=1e9)
-    assert ctl.sent[-1] == (3, 1400)                              # returned to start on error
+    assert ctl.sent[-2:] == [(3, 1480), "STOP"]                    # stopped on error, no recovery move
     from dtg.observations import load_log
     log = load_log(tmp_path / "obs.jsonl")
     assert log.header["source"] == "live" and len(log.select(phase="wiggle")) == 6  # 5 + 1 before the abort
