@@ -37,7 +37,7 @@ from pathlib import Path
 import numpy as np
 
 from .markers import Markers
-from .observations import Frame, mean_pose, new_header
+from .observations import Frame, new_header
 
 MAX_WIGGLE_US = 150
 
@@ -88,32 +88,42 @@ def tag_object_points(size_m: float) -> np.ndarray:
     return np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], dtype=np.float64)
 
 
-def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detector=None, *, clahe: bool = False):
-    """Detect the markers.json tags in one image. Returns ({id: T_camera_tag}, {id: reprojection px})."""
-    import cv2
-    if markers.tag_size_mm is None:
-        raise ValueError("markers.json has no tag_size_mm; pose needs the printed black-square size")
+def detect_corners(image, markers: Markers, detector=None, *, clahe: bool = False) -> dict[int, np.ndarray]:
+    """Image corners (4x2, OpenCV order) of every markers.json tag found in one image."""
     gray = preprocess(image, clahe=clahe)
     detector = detector or make_detector(markers.dictionary)
     corners, ids, _ = detector.detectMarkers(gray)
-    poses, errors = {}, {}
     if ids is None:
-        return poses, errors
-    obj = tag_object_points(markers.tag_size_mm / 1000.0)
+        return {}
     wanted = set(markers.tags.values())
-    for c, i in zip(corners, ids.ravel()):
-        if int(i) not in wanted:
-            continue
-        img = c.reshape(4, 2).astype(np.float64)
-        ok, rvec, tvec = cv2.solvePnP(obj, img, intrinsics.K, intrinsics.dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-        if not ok:
-            continue
-        proj, _ = cv2.projectPoints(obj, rvec, tvec, intrinsics.K, intrinsics.dist)
-        T = np.eye(4)
-        T[:3, :3] = cv2.Rodrigues(rvec)[0]
-        T[:3, 3] = tvec.ravel()
-        poses[int(i)] = T
-        errors[int(i)] = float(np.sqrt(((proj.reshape(4, 2) - img) ** 2).sum(axis=1).mean()))
+    return {int(i): c.reshape(4, 2).astype(np.float64) for c, i in zip(corners, ids.ravel()) if int(i) in wanted}
+
+
+def pose_from_corners(img: np.ndarray, markers: Markers, intrinsics: CameraIntrinsics):
+    """(T_camera_tag, reprojection px) from one tag's four image corners, or None."""
+    import cv2
+    if markers.tag_size_mm is None:
+        raise ValueError("markers.json has no tag_size_mm; pose needs the printed black-square size")
+    obj = tag_object_points(markers.tag_size_mm / 1000.0)
+    ok, rvec, tvec = cv2.solvePnP(obj, img, intrinsics.K, intrinsics.dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+    if not ok:
+        return None
+    proj, _ = cv2.projectPoints(obj, rvec, tvec, intrinsics.K, intrinsics.dist)
+    T = np.eye(4)
+    T[:3, :3] = cv2.Rodrigues(rvec)[0]
+    T[:3, 3] = tvec.ravel()
+    return T, float(np.sqrt(((proj.reshape(4, 2) - img) ** 2).sum(axis=1).mean()))
+
+
+def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detector=None, *, clahe: bool = False):
+    """Detect the markers.json tags in one image. Returns ({id: T_camera_tag}, {id: reprojection px})."""
+    if markers.tag_size_mm is None:
+        raise ValueError("markers.json has no tag_size_mm; pose needs the printed black-square size")
+    poses, errors = {}, {}
+    for i, img in detect_corners(image, markers, detector, clahe=clahe).items():
+        fit = pose_from_corners(img, markers, intrinsics)
+        if fit is not None:
+            poses[i], errors[i] = fit
     return poses, errors
 
 
@@ -212,20 +222,29 @@ class ArucoTracker:
         return self.focus
 
     def capture(self, frames: int = 8):
+        """Settled capture: each tag's corners are averaged (per-corner median)
+        over the frames it was seen in, then one pose is solved.
+
+        Averaging corners rather than poses matters with noisy images: a
+        square tag's pose has two near-equal solutions, and per-frame poses
+        flip between them (several degrees) while the median corners do not.
+        A tag must be seen in at least half the frames."""
         per_tag: dict[int, list] = {}
-        errs: dict[int, list] = {}
         for _ in range(frames):
             ok, image = self.cap.read()
             if not ok:
                 continue
-            poses, e = estimate_poses(image, self.markers, self.intrinsics, self.detector, clahe=self.clahe)
-            for k, T in poses.items():
-                if e[k] <= self.max_reproj_px:   # drop high-reprojection (likely flipped) detections
-                    per_tag.setdefault(k, []).append(T)
-                    errs.setdefault(k, []).append(e[k])
+            for k, img in detect_corners(image, self.markers, self.detector, clahe=self.clahe).items():
+                per_tag.setdefault(k, []).append(img)
         need = max(1, frames // 2)
-        return ({k: mean_pose(v) for k, v in per_tag.items() if len(v) >= need},
-                {k: float(np.mean(errs[k])) for k, v in per_tag.items() if len(v) >= need})
+        poses, errs = {}, {}
+        for k, seen in per_tag.items():
+            if len(seen) < need:
+                continue
+            fit = pose_from_corners(np.median(np.stack(seen), axis=0), self.markers, self.intrinsics)
+            if fit is not None and fit[1] <= self.max_reproj_px:   # drop poor fits (likely flipped or partial)
+                poses[k], errs[k] = fit
+        return poses, errs
 
     def close(self):
         self.cap.release()
