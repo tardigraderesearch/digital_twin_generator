@@ -129,3 +129,21 @@ def test_focus_sweep_survives_high_gain_noise():
     assert max(plain) / min(plain) < 1.5                      # no usable peak without smoothing
     result = cam.focus_sweep(Noisy(sharp=150), positions=range(80, 250, 15))
     assert abs(result.lens - 150) <= 5
+
+
+def test_tracker_resolves_the_square_tag_ambiguity_by_continuity():
+    from scipy.spatial.transform import Rotation
+    tracker = cam.ArucoTracker(LensCamera(), MARKERS, cam.CameraIntrinsics(np.eye(3), np.zeros(5)))
+
+    def pose(deg):
+        T = np.eye(4)
+        T[:3, :3] = Rotation.from_euler("x", deg, degrees=True).as_matrix()
+        return T
+    # first sighting, ambiguous (errors 0.30 vs 0.33): skipped rather than guessed
+    assert tracker._choose(7, [(pose(20), 0.30), (pose(-20), 0.33)]) is None
+    # first sighting, clear winner: accepted
+    T, _ = tracker._choose(7, [(pose(20), 0.2), (pose(-20), 0.9)])
+    tracker._last[7] = T
+    # later the noisy corners favour the mirror solution slightly: continuity wins
+    T, _ = tracker._choose(7, [(pose(-22), 0.30), (pose(22), 0.31)])
+    assert np.allclose(T, pose(22))

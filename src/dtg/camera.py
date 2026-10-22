@@ -115,6 +115,28 @@ def pose_from_corners(img: np.ndarray, markers: Markers, intrinsics: CameraIntri
     return T, float(np.sqrt(((proj.reshape(4, 2) - img) ** 2).sum(axis=1).mean()))
 
 
+def pose_candidates(img: np.ndarray, markers: Markers, intrinsics: CameraIntrinsics) -> list:
+    """Both IPPE solutions for one tag, best first: [(T_camera_tag, reprojection px), ...].
+
+    A square tag seen with noisy corners has two poses that fit almost
+    equally well (mirror-like tilts, often 20-40 deg apart); which one wins
+    can flip from frame to frame."""
+    import cv2
+    obj = tag_object_points(markers.tag_size_mm / 1000.0)
+    try:
+        n, rvecs, tvecs, errs = cv2.solvePnPGeneric(obj, img, intrinsics.K, intrinsics.dist,
+                                                    flags=cv2.SOLVEPNP_IPPE_SQUARE)
+    except cv2.error:
+        return []
+    out = []
+    for i in range(int(n)):
+        T = np.eye(4)
+        T[:3, :3] = cv2.Rodrigues(rvecs[i])[0]
+        T[:3, 3] = np.asarray(tvecs[i]).ravel()
+        out.append((T, float(np.ravel(errs)[i]) if errs is not None else float("nan")))
+    return sorted(out, key=lambda x: x[1])
+
+
 def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detector=None, *, clahe: bool = False):
     """Detect the markers.json tags in one image. Returns ({id: T_camera_tag}, {id: reprojection px})."""
     if markers.tag_size_mm is None:
@@ -125,6 +147,10 @@ def estimate_poses(image, markers: Markers, intrinsics: CameraIntrinsics, detect
         if fit is not None:
             poses[i], errors[i] = fit
     return poses, errors
+
+
+def _rot_deg(R) -> float:
+    return float(np.degrees(np.arccos(np.clip((np.trace(R) - 1) / 2, -1.0, 1.0))))
 
 
 def sharpness(image, roi=None, *, presmooth: float = 1.5) -> float:
@@ -215,6 +241,8 @@ class ArucoTracker:
         self.clahe = clahe
         self.detector = make_detector(markers.dictionary, subpix=subpix)
         self.focus: FocusResult | None = None
+        self.ambiguity_ratio = 1.5
+        self._last: dict[int, np.ndarray] = {}
 
     def lock_focus(self, **kwargs) -> FocusResult:
         """Manual focus sweep + lock (see focus_sweep). Run before the reference capture."""
@@ -223,12 +251,14 @@ class ArucoTracker:
 
     def capture(self, frames: int = 8):
         """Settled capture: each tag's corners are averaged (per-corner median)
-        over the frames it was seen in, then one pose is solved.
+        over the frames it was seen in, then its pose is solved once.
 
-        Averaging corners rather than poses matters with noisy images: a
-        square tag's pose has two near-equal solutions, and per-frame poses
-        flip between them (several degrees) while the median corners do not.
-        A tag must be seen in at least half the frames."""
+        Averaging corners rather than poses matters with noisy images, and so
+        does the square-tag ambiguity (see pose_candidates): the solution kept
+        is the one closest to the tag's last accepted pose; a tag seen for the
+        first time is accepted only if one solution clearly fits better
+        (``ambiguity_ratio``). A tag must be seen in at least half the frames.
+        """
         per_tag: dict[int, list] = {}
         for _ in range(frames):
             ok, image = self.cap.read()
@@ -241,10 +271,27 @@ class ArucoTracker:
         for k, seen in per_tag.items():
             if len(seen) < need:
                 continue
-            fit = pose_from_corners(np.median(np.stack(seen), axis=0), self.markers, self.intrinsics)
-            if fit is not None and fit[1] <= self.max_reproj_px:   # drop poor fits (likely flipped or partial)
+            fit = self._choose(k, pose_candidates(np.median(np.stack(seen), axis=0), self.markers, self.intrinsics))
+            if fit is not None and fit[1] <= self.max_reproj_px:   # drop poor fits (partial, smeared)
                 poses[k], errs[k] = fit
+                self._last[k] = fit[0]
         return poses, errs
+
+    def _choose(self, tag: int, candidates: list):
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        (Ta, ea), (Tb, eb) = candidates[:2]
+        last = self._last.get(tag)
+        if last is not None:
+            da = _rot_deg(last[:3, :3].T @ Ta[:3, :3])
+            db = _rot_deg(last[:3, :3].T @ Tb[:3, :3])
+            if abs(da - db) > 5.0:
+                return (Ta, ea) if da < db else (Tb, eb)
+        if eb >= self.ambiguity_ratio * max(ea, 1e-6):
+            return Ta, ea
+        return None        # ambiguous with no history: skip this capture rather than guess
 
     def close(self):
         self.cap.release()
