@@ -13,7 +13,9 @@ tracks every tag. From the log:
 5. direction: sign of the rotation about the (canonicalised) rough axis when
    the pulse goes up.
 
-Never guesses: channels where nothing moves are "no_response"; two channels
+A tag counts as moved only if it moves on both sides of the wiggle; a large
+one-sided move is flagged. Never guesses: channels where nothing moves are
+"no_response"; two channels
 claiming one child, a missing intermediate tag, occluded tags or a
 non-rigid tag group are flagged "needs_confirmation" with a reason.
 """
@@ -45,6 +47,8 @@ class Link:
     signature: list[int]           # channels that move this link
     primary_tag: int
     offsets: dict[int, list] = field(default_factory=dict)  # T_primary_tag per tag
+    unknown_channels: list[int] = field(default_factory=list)  # wiggles where this link was hidden and
+                                                               # could not be placed (signature incomplete)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -160,10 +164,11 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
     # per channel: which tags moved
     moved: dict[int, set] = {}
     occluded: dict[int, set] = {}
+    one_sided: dict[int, set] = {}
     motion: dict[tuple, tuple] = {}
     for c in channels:
         fr = [f for f in wiggle if f.channel == c]
-        moved[c], occluded[c] = set(), set()
+        moved[c], occluded[c], one_sided[c] = set(), set(), set()
         for k in tags:
             base = [_rel(f, root, k) for f in fr if f.event == "wiggle_base"]
             base = [b for b in base if b is not None]
@@ -173,11 +178,18 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
                 occluded[c].add(k)
                 continue
             B = mean_pose(base)
-            dr = max(_delta(B, mean_pose(v))[0] for v in ends.values())
-            dt = max(_delta(B, mean_pose(v))[1] for v in ends.values())
+            sides = [_delta(B, mean_pose(v)) for v in ends.values()]
+            dr = max(r for r, _ in sides)
+            dt = max(t for _, t in sides)
             motion[(c, k)] = (dr, dt)
-            if dr > rot_thr or dt > trans_thr:
+            # A joint wiggle moves its child on BOTH sides of the base pulse. One
+            # capture over the threshold is noise, a glint or a partial occlusion
+            # (ignored); a large one-sided move (a hard stop?) is flagged.
+            over = [r > rot_thr or t > trans_thr for r, t in sides]
+            if all(over):
                 moved[c].add(k)
+            elif dr > 2 * rot_thr or dt > 2 * trans_thr:
+                one_sided[c].add(k)
         if root not in set().union(*[set(f.poses) for f in fr]):
             flags.append(f"channel {c}: root tag {root} never seen during its wiggle")
 
@@ -201,15 +213,20 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
         devs = [d for d in devs if d is not None]
         return bool(devs) and all(r <= rigid_r and t <= rigid_t for r, t in devs)
 
+    unknown: dict[frozenset, set] = {}       # placeholder group -> channels its motion is unknown for
     for k in partial:
         fits = [sig for sig in groups if {c for c in sig if c in known[k]} == set(signature[k])
                 and rigid_with(k, groups[sig])]
         if len(fits) == 1:
             groups[fits[0]].append(k)
+            if fits[0] in unknown:
+                unknown[fits[0]] |= set(channels) - known[k]
             flags.append(f"tag {k} was hidden during channel(s) {sorted(set(channels) - known[k])}; "
                          f"grouped by its other channels")
         else:
-            groups.setdefault(signature[k] | {-1 - k}, []).append(k)  # unique placeholder signature
+            key = signature[k] | {-1 - k}       # unique placeholder signature
+            groups.setdefault(key, []).append(k)
+            unknown[key] = set(channels) - known[k]
             flags.append(f"tag {k} was hidden during channel(s) {sorted(set(channels) - known[k])} and "
                          "cannot be placed on a link: re-run those wiggles with it visible")
     links: list[Link] = []
@@ -232,8 +249,11 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
                              f"(90th pct {r90:.1f} deg / {t90:.1f} mm): coupled joint or loose tag? confirm")
             offsets[k] = M.tolist()
         links.append(Link(name=_unique(name, links), tags=members, signature=sorted(c for c in sig if c >= 0),
-                          primary_tag=primary, offsets=offsets))
-    by_sig = {frozenset(l.signature): l for l in links if not any(-1 - k in groups for k in l.tags)}
+                          primary_tag=primary, offsets=offsets, unknown_channels=sorted(unknown.get(sig, ()))))
+    # Only fully placed links can be looked up by signature (an unplaced link's
+    # visible signature is incomplete and could collide with, e.g., the base).
+    by_sig = {frozenset(l.signature): l for l in links if not l.unknown_channels}
+    unplaced = [l for l in links if l.unknown_channels]
     for c in channels:  # occlusion only matters when a whole link was hidden
         hidden_links = [l.name for l in links if l.tags and all(k in occluded[c] for k in l.tags if k != root)
                         and any(k != root for k in l.tags)]
@@ -246,10 +266,14 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
                             occluded_tags=sorted(occluded[c]))
         if res.occluded_tags:
             res.reasons.append(f"every tag of a link was hidden during this wiggle: {res.occluded_tags}")
+        if one_sided[c]:
+            res.reasons.append(f"tags {sorted(one_sided[c])} moved on one side of the wiggle only: "
+                               "end stop, slipping horn or a bad detection; check by eye")
         if not moved[c]:
-            if res.occluded_tags:
+            if res.occluded_tags or one_sided[c]:
                 res.status = "needs_confirmation"
-                res.reasons.append("nothing visible moved, but some tags were hidden: re-run with a clear view")
+                res.reasons.append("nothing moved on both sides, but some tags were hidden or moved one way: "
+                                   "re-run with a clear view")
             else:
                 res.reasons.append("no tag moved: channel unused, unpowered or driving an untagged part")
             results.append(res)
@@ -263,8 +287,13 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
             results.append(res)
             continue
         child = child[0]
+        doubt = [l.name for l in unplaced if l is child or c in l.unknown_channels
+                 or set(l.signature) <= set(child.signature) - {c}]
+        if doubt:
+            res.reasons.append(f"links {doubt} were hidden during some wiggles and could be this joint's child "
+                               "or parent: re-run those wiggles with them visible")
         parent = by_sig.get(frozenset(child.signature) - {c})
-        res.status = "mapped"
+        res.status = "mapped" if not one_sided[c] and not doubt else "needs_confirmation"
         if parent is None:
             subset = [l for l in links if set(l.signature) < set(child.signature) and c not in l.signature]
             parent = max(subset, key=lambda l: len(l.signature)) if subset else by_sig[frozenset()]
@@ -294,14 +323,19 @@ def infer_linkage(log: ObservationLog, markers: Markers | None = None,
 
 
 def _rigidity(log, a, b):
-    """90th-percentile deviation (deg, mm) of tag b's pose relative to tag a
-    over every frame where both are visible; None if never together."""
+    """Worst deviation (deg, mm) of tag b's pose relative to tag a over every
+    frame where both are visible; None if never together.
+
+    The worst frame, not a percentile: a tag hidden during some wiggles is
+    placed on a link by this test, and the one or two frames where it was
+    seen moving relative to that link are exactly the evidence that matters
+    (a 90th percentile let a moving tag join the static base)."""
     rel = [inv(f.poses[a]) @ f.poses[b] for f in log.frames if a in f.poses and b in f.poses]
     if len(rel) < 3:
         return None
     M = mean_pose(rel)
     dev = np.array([_delta(M, r) for r in rel])
-    return float(np.percentile(dev[:, 0], 90)), float(np.percentile(dev[:, 1], 90))
+    return float(dev[:, 0].max()), float(dev[:, 1].max())
 
 
 def _unique(name, links):
