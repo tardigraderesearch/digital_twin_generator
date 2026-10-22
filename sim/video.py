@@ -25,6 +25,16 @@ class FrameRecorder:
         self.detector = make_detector(world.markers.dictionary)
         self.frames: list[tuple[float, bytes, dict]] = []
         self._next = 0.0
+        # a fixed 16:9 crop around the robot (the arm sweeps, so leave room)
+        from .operator import robot_roi
+        x, y, w, h = robot_roi(world, pad=170)
+        cx, cy = x + w / 2, y + h / 2
+        cw = max(w, h * 16 / 9, 640)
+        cw = min(cw, 1920)
+        ch = cw * 9 / 16
+        x0 = int(np.clip(cx - cw / 2, 0, 1920 - cw))
+        y0 = int(np.clip(cy - ch / 2, 0, 1080 - ch))
+        self.crop = (x0, y0, int(cw), int(ch))
 
     def tap(self, t: float, frame: np.ndarray) -> None:
         if t < self._next:
@@ -37,8 +47,10 @@ class FrameRecorder:
             pts = c.astype(np.int32).reshape(-1, 1, 2)
             cv2.polylines(view, [pts], True, (60, 255, 60), 3, cv2.LINE_AA)
             cv2.circle(view, tuple(int(v) for v in c[0]), 6, (40, 40, 255), -1, cv2.LINE_AA)
-            cv2.putText(view, self.world.markers.name_for(k), tuple(int(v) for v in c.mean(axis=0) + (-30, -45)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (60, 255, 60), 2, cv2.LINE_AA)
+            cv2.putText(view, self.world.markers.name_for(k), tuple(int(v) for v in c.mean(axis=0) + (-40, -50)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (60, 255, 60), 2, cv2.LINE_AA)
+        x0, y0, cw, ch = self.crop
+        view = view[y0:y0 + ch, x0:x0 + cw]
         ok, jpg = cv2.imencode(".jpg", cv2.resize(view, (960, 540), interpolation=cv2.INTER_AREA),
                                [cv2.IMWRITE_JPEG_QUALITY, 85])
         q = self.world.robot.joint_angles()
