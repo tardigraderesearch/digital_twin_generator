@@ -88,3 +88,18 @@ def test_mark_with_hidden_tags_uses_same_pulse_samples():
     elbow = next(j for j in kin.joints if j.channel == 7)
     assert elbow.terminal_range_1.pulse_us == rom1.pulse_us
     assert any("same pulse" in r for r in elbow.reasons)
+
+
+def test_hidden_rom_ends_are_extrapolated_and_flagged():
+    """Found by the virtual bench: a one-tag link seen only in the middle of its
+    range (the tag turns away near the ends) used to drop the joint entirely."""
+    log = generate(seed=0)
+    truth = log.header["truth"]["joints"]["j_elbow"]
+    for f in log.select(phase="rom", channel=7):
+        if abs(f.pulse_us - truth["zero_us"]) > 250:
+            f.poses.pop(4, None)                               # forearm tag invisible beyond +-250 us
+    kin = infer_kinematics(log, infer_linkage(log, parse_markers(log.header["markers"])))
+    elbow = next(j for j in kin.joints if j.channel == 7)
+    assert elbow.status == "flagged" and any("extrapolated" in r for r in elbow.reasons)
+    r = next(x for x in score(log, kin) if x["j"].channel == 7)
+    assert r["lim"] < 3.0 and r["axis"] < 3.0

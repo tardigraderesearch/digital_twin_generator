@@ -211,7 +211,26 @@ def fit_joint(log: ObservationLog, wiggle: WiggleResult, ch, ref_frames, link_re
                              predicted_from_pulse=float(slope * pulse + intercept),
                              child_pose_in_parent=mean_pose([r[1] for r, _ in hits]).round(9).tolist(),
                              tag_poses_in_parent=tag_poses)
-    t1, t2 = terminal("rom1", "ROM 1"), terminal("rom2", "ROM 2")
+    def extrapolated(event, label):
+        # Tags not visible at the mark (or at that pulse at all): a tag that faces
+        # the camera at rest turns away or hides behind another link near the
+        # ends of a large range. Use the pulse fit, flagged, rather than drop the joint.
+        marks = [f for f in frames if f.event == event and f.pulse_us is not None]
+        if not marks or jtype != "revolute":
+            return None
+        pulse = float(marks[-1].pulse_us)
+        pos = float(slope * pulse + intercept)
+        span = (pulses.min(), pulses.max())
+        reasons.append(f"{label}: tags not visible at {pulse:.0f} us; position extrapolated from the pulse fit "
+                       f"(seen {span[0]:.0f}..{span[1]:.0f} us)")
+        G = np.eye(4)
+        G[:3, :3] = Rotation.from_rotvec(axis * pos).as_matrix()
+        G[:3, 3] = pivot - G[:3, :3] @ pivot
+        return TerminalRange(mark=label, pulse_us=pulse, position=pos, position_deg=float(np.degrees(pos)),
+                             predicted_from_pulse=pos, child_pose_in_parent=(G @ Q_ref).round(9).tolist(),
+                             tag_poses_in_parent={})
+    t1 = terminal("rom1", "ROM 1") or extrapolated("rom1", "ROM 1")
+    t2 = terminal("rom2", "ROM 2") or extrapolated("rom2", "ROM 2")
     if t1 is None or t2 is None:
         reasons.append("ROM 1 and/or ROM 2 was not marked (or the tags were hidden at the mark)")
         return None
