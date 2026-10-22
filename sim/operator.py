@@ -469,8 +469,9 @@ def _safety_probes(world, bench, rom_channels, cfg) -> dict:
     # host unplugged / crashed: port closed without DISARM while the heartbeat thread runs
     ctl = fresh()
     ctl.arm(power_cutoff_confirmed=True)
-    ctl.start(ch, start)
-    bench.wait_output(ch, start)
+    resume = start + 30            # the watchdog left the servo here: START where it is, never elsewhere
+    ctl.start(ch, resume)
+    bench.wait_output(ch, resume)
     hb = ctl._heartbeat
     gone = time.monotonic()
     if hb is not None:
