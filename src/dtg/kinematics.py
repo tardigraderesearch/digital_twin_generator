@@ -187,6 +187,16 @@ def fit_joint(log: ObservationLog, wiggle: WiggleResult, ch, ref_frames, link_re
     def terminal(event, label):
         hits = [(r, th) for r, th in zip(rows, theta) if r[0].event == event]
         if not hits:
+            # Tags hidden at the instant of the mark: use settled captures at the
+            # same commanded pulse (the slider sample taken just before the mark).
+            marks = [f for f in frames if f.event == event and f.pulse_us is not None]
+            if marks:
+                pulse = marks[-1].pulse_us
+                hits = [(r, th) for r, th in zip(rows, theta)
+                        if r[0].phase == "rom" and abs(r[0].pulse_us - pulse) < 0.5]
+                if hits:
+                    reasons.append(f"{label}: tags hidden at the mark; used {len(hits)} capture(s) at the same pulse")
+        if not hits:
             return None
         pos = float(np.mean([th for _, th in hits]))
         pulse = float(np.mean([r[0].pulse_us for r, _ in hits]))

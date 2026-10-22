@@ -73,3 +73,18 @@ def test_end_stop_is_flagged():
     elbow = next(x for x in kin.joints if x.channel == j.channel)
     assert elbow.status == "flagged"
     assert any("ROM 1" in r for r in elbow.reasons)
+
+
+def test_mark_with_hidden_tags_uses_same_pulse_samples():
+    """Found by the virtual bench: tags hidden only in the ROM 1 capture dropped the whole joint."""
+    import copy
+    log = generate(seed=0)
+    rom1 = next(f for f in log.select(phase="rom", channel=7) if f.event == "rom1")
+    sample = copy.deepcopy(rom1)                 # the settled slider sample at the same pulse, just before
+    sample.event, sample.t = "sample", rom1.t - 0.1
+    log.frames.append(sample)
+    rom1.poses.pop(4)                            # forearm tag hidden at the mark itself
+    kin = infer_kinematics(log, infer_linkage(log, parse_markers(log.header["markers"])))
+    elbow = next(j for j in kin.joints if j.channel == 7)
+    assert elbow.terminal_range_1.pulse_us == rom1.pulse_us
+    assert any("same pulse" in r for r in elbow.reasons)
