@@ -43,6 +43,7 @@ class HealthParams:
     footprint_margin_mm: float = 2.0
     wire_max_mm: float = 4.5           # max wire/tube diameter
     wire_min_len_mm: float = 30.0
+    wire_min_mm: float = 0.6           # thinner "walls" are slivers / crevices, not cables
     hole_fill_max_mm: float = 40.0     # perimeter of holes that may be auto-filled
     fragment_max_frac: float = 0.02    # islands smaller than this share of area
     blob_variation: float = 0.12       # local surface variation threshold
@@ -382,6 +383,28 @@ def detect_holes(scan: Scan, p: HealthParams) -> list[Finding]:
     return findings
 
 
+def _sheet_like(P: np.ndarray, radius: float, seed: int = 0, max_probe: int = 300) -> bool:
+    """True when the thin samples spread in two directions locally (a plate), not one (a wire).
+
+    Around a wire the thin samples lie along a curve: the second principal
+    spread is about the wire's thickness. Across a thin plate (a tag tile,
+    a sheet bracket) it is as large as the first.
+    """
+    if len(P) < 20:
+        return False
+    tree = cKDTree(P)
+    rng = np.random.default_rng(seed)
+    probes = P[rng.choice(len(P), size=min(max_probe, len(P)), replace=False)]
+    ratios = []
+    for q in probes:
+        nb = P[tree.query_ball_point(q, radius)]
+        if len(nb) < 8:
+            continue
+        sv = np.linalg.svd(nb - nb.mean(axis=0), compute_uv=False)
+        ratios.append(sv[1] / max(sv[0], 1e-12))
+    return bool(ratios) and float(np.median(ratios)) > 0.55
+
+
 def detect_wires_and_blobs(scan: Scan, centres, normals, weights, exclude: np.ndarray, p: HealthParams):
     """Thin free-hanging runs (wires) and rough noisy patches (low confidence).
 
@@ -444,6 +467,10 @@ def detect_wires_and_blobs(scan: Scan, centres, normals, weights, exclude: np.nd
                 extent_mm = float(np.ptp(S[members], axis=0).max()) * scan.mm_per_unit
                 if extent_mm < p.wire_min_len_mm:
                     continue
+                if np.median(thickness[members]) * scan.mm_per_unit < p.wire_min_mm:
+                    continue      # sliver between fused parts or a crevice, not a cable
+                if _sheet_like(S[members], scan.mm(max(3 * p.wire_max_mm, 8.0)), p.seed):
+                    continue      # a thin plate (tag tile, bracket, fin), not a tube
                 runs.append((extent_mm, members))
             runs.sort(key=lambda x: -x[0])
             for n, (extent_mm, members) in enumerate(runs):

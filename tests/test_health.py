@@ -47,6 +47,15 @@ def test_wire_loop_detected():
     assert all(w.metrics["median_thickness_mm"] < 2.5 for w in wires)
 
 
+def test_thin_tag_tile_is_not_a_wire():
+    """A 36 mm square, 2.5 mm thick tag tile on the robot is a plate, not a cable (strip wires must keep it)."""
+    tile = trimesh.creation.box(extents=[36, 36, 2.5])
+    tile.apply_translation([0, 0, 75])
+    tile = tile.subdivide().subdivide().subdivide().subdivide()
+    scan = as_scan(trimesh.util.concatenate([robot_block(), tile]))
+    assert not check_scan(scan).by_kind("wire")
+
+
 def test_small_hole_found_and_filled():
     mesh = trimesh.creation.icosphere(subdivisions=4, radius=30)
     centre = np.array([0, 0, 30.0])
