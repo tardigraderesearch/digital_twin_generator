@@ -25,7 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SCHEMA = "dtg.session/1"
-MAPS_DIR = Path(os.environ.get("DTG_MAPS_DIR", Path.home() / "digital_twin_generator_maps"))
+MAPS_DIR = Path.home() / "digital_twin_generator_maps"
+
+
+def maps_dir() -> Path:
+    """Where sessions are saved (DTG_MAPS_DIR overrides, e.g. for tests)."""
+    return Path(os.environ.get("DTG_MAPS_DIR") or MAPS_DIR)
 
 # (key, tab title, one line saying what to do next)
 STEPS = [
@@ -62,7 +67,7 @@ class Session:
     # ------------------------------------------------------------ create / open
     @classmethod
     def new(cls, name: str = "robot", base: Path | None = None) -> "Session":
-        base = Path(base or MAPS_DIR)
+        base = Path(base or maps_dir())
         stamp = time.strftime("%Y%m%d-%H%M%S")
         root = base / f"{safe_name(name)}-{stamp}"
         n = 2
@@ -202,7 +207,7 @@ class Session:
 
 
 def latest(base: Path | None = None) -> Path:
-    base = Path(base or MAPS_DIR)
+    base = Path(base or maps_dir())
     found = sorted((p for p in base.glob("*/session.json")), key=lambda p: p.stat().st_mtime)
     if not found:
         raise SessionError(f"no sessions in {base}; start one with: dtg session new NAME")
