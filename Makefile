@@ -1,8 +1,8 @@
 # Virtual bench (sim/): an end-to-end simulated hardware test. Private, like the rest of DTG.
 # The sim environment is separate from the app's .venv: it also needs robo-prober (v0.2,
 # for the real host API and firmware core) and aruco-tag-maker (tag bitmaps + markers.json).
-ROBO_PROBER ?= $(HOME)/Documents/github-portfolio-review/staging/robo-prober
-ARUCO_TAG_MAKER ?= $(HOME)/Documents/github-portfolio-review/staging/aruco-tag-maker
+ROBO_PROBER ?= $(HOME)/Projects/robo_prober
+ARUCO_TAG_MAKER ?= $(HOME)/Projects/aruco_tag_maker
 SIM_PY := sim/.venv/bin/python
 SEED ?= 0
 N ?= 50
