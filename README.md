@@ -1,11 +1,12 @@
 **To use:** `cd digital_twin_generator`, then run `python digital_twin_generator.py`
 
-# Digital Twin Generator (private)
+# Digital Twin Generator
+
+> **Work in progress.** Every step has been exercised end to end on a simulated bench; only the scan health check has run on real hardware so far. See the hardware test status table below before trusting it with a real robot.
 
 Build an editable robot model from a scan and camera-observed joint motion.
 The launcher checks Python and Tk, prepares a private `.venv`, asks before
 installing dependencies, then opens the window. Nothing installs system-wide.
-The repository stays private and has no remote.
 
 ## The eight steps
 

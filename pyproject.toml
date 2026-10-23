@@ -8,7 +8,7 @@ version = "0.1.0.dev0"
 description = "Built robot to verified, sim-ready model: scan health check, camera-observed wiggle and ROM, scan segmentation by linkage, URDF export. Private."
 readme = "README.md"
 license = { text = "Proprietary - all rights reserved" }
-authors = [{ name = "evilhobo1911" }]
+authors = [{ name = "tardigraderesearch" }]
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.26",
