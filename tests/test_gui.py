@@ -87,11 +87,12 @@ def test_offline_flow_on_a_recorded_log(root, tmp_path):
 
 def test_hardware_bar_with_the_emulator(root):
     from dtg.gui import EMULATOR_LABEL, TwinApp
-    app = TwinApp(root, port="emulator")
+    app = TwinApp(root, port="emulator", sim_light=85.0)
     assert app.source_var.get() == EMULATOR_LABEL
     app.connect()
     pump(root, app, until_idle=True)
     assert app.bench is not None and app.bench.connected and not app.bench.armed
+    assert app.bench.sim_light == 85.0
     assert app.channels_var.get().startswith("0-15")
     app.arm()                                             # cutoff not ticked: refused
     assert not app.bench.armed and "cutoff_unconfirmed" in app.status.get()

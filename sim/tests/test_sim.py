@@ -136,3 +136,34 @@ def test_full_session_end_to_end(tmp_path):
     score = run_one(2, tmp_path, camera_noise={"full_well": 80.0})
     assert not score["errors"] and score["map_silent_wrong"] == 0
     assert score["checks"]["no_hard_stop_contact"] and score["checks"]["watchdog"]
+
+
+def test_scan_registration_fixture_roundtrips_units_and_frame(world):
+    from sim.scan import scan_mesh
+    mesh, transform, motions = scan_mesh(world, noise_mm=0, max_edge_mm=10)
+    assert len(mesh.faces) > 0 and np.isfinite(mesh.vertices).all()
+    assert np.linalg.det(transform[:3, :3]) == pytest.approx(1.0)
+    mesh.apply_transform(np.linalg.inv(transform))
+    mesh.apply_scale(0.001)
+    for tag in world.truth.tags.values():
+        centre = (motions[tag["link"]] @ np.asarray(tag["T0"]))[:3, 3]
+        # Every tag centre must remain inside the robot scan's bounding box.
+        assert np.all(centre >= mesh.bounds[0] - 0.002)
+        assert np.all(centre <= mesh.bounds[1] + 0.002)
+
+
+def test_gui_walk_rejects_unsafe_or_wrong_result():
+    from copy import deepcopy
+    from sim.cli import gui_walk_ok
+    good = {"urdf_valid": True, "map_exact": True, "map_silent_wrong": 0,
+            "safety": {"hard_stop_contacts": 0, "pwm_past_hard_stop": 0,
+                       "pwm_outside_rom": 0, "unused_channel_far_pulses": 0,
+                       "slew_capped": True, "rom_band_enforced": True}}
+    assert gui_walk_ok(good)
+    assert not gui_walk_ok({})
+    for key in good["safety"]:
+        bad = deepcopy(good)
+        bad["safety"][key] = False if key in ("slew_capped", "rom_band_enforced") else 1
+        assert not gui_walk_ok(bad), key
+    good["map_silent_wrong"] = 1
+    assert not gui_walk_ok(good)

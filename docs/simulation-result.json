@@ -1,0 +1,973 @@
+{
+  "seed": 2,
+  "light": 60.0,
+  "source": "simulation",
+  "session": "runs/handoff-final-2026-10-23/maps/robot-20261023-004735",
+  "shots": [
+    "docs/screenshots/1-scan.png",
+    "docs/screenshots/2-tags.png",
+    "docs/screenshots/3-wiggle.png",
+    "docs/screenshots/4-range-of-motion.png",
+    "docs/screenshots/5-register.png",
+    "docs/screenshots/6-cut-links.png",
+    "docs/screenshots/7-missing-parts.png",
+    "docs/screenshots/8-export.png"
+  ],
+  "scan": {
+    "scan": "runs/handoff-final-2026-10-23/scan/sim-robot-2.stl",
+    "faces": 159390
+  },
+  "wiggle": {
+    "first_pass": {
+      "0": "no_response",
+      "1": "mapped",
+      "2": "no_response",
+      "3": "no_response",
+      "4": "mapped",
+      "5": "no_response",
+      "6": "mapped",
+      "7": "no_response"
+    },
+    "final": {
+      "0": "no_response",
+      "1": "mapped",
+      "2": "no_response",
+      "3": "no_response",
+      "4": "mapped",
+      "5": "no_response",
+      "6": "mapped",
+      "7": "no_response"
+    },
+    "operator": {}
+  },
+  "rom_answers": {
+    "j_upper_arm": "confirmed"
+  },
+  "register": {
+    "status": "done",
+    "summary": "tag centres: 6 pairs, rms 0.7 mm",
+    "at": "2026-10-23T00:57:17"
+  },
+  "segment": {
+    "status": "done",
+    "summary": "vertices: 36878, unassigned_vertices: 815, per_link_faces: {'base': 19709, 'forearm': 16081, 'turret': 17651, 'upper_arm': 18178}, unassigned_faces: 1594",
+    "at": "2026-10-23T00:57:20"
+  },
+  "parts": {
+    "status": "done",
+    "summary": "3 library-servo, 4 scanned",
+    "at": "2026-10-23T00:57:30"
+  },
+  "export": {
+    "status": "done",
+    "summary": "3 joint(s) in robot.urdf",
+    "at": "2026-10-23T00:57:32",
+    "out": "runs/handoff-final-2026-10-23/maps/robot-20261023-004735/twin"
+  },
+  "joints": {
+    "j_turret": {
+      "channel": 6,
+      "found": true,
+      "status": "ok",
+      "reasons": [],
+      "axis_deg": 0.3192581771156904,
+      "pivot_mm": 2.9556056415774075,
+      "direction_ok": true,
+      "gain_pct": -0.11241961921508725,
+      "zero_pulse_us": 0.5458668964952267,
+      "rom1_pulse_matches": true,
+      "rom1_stop_margin_deg": 6.656579860310259,
+      "rom2_pulse_matches": true,
+      "rom2_stop_margin_deg": 7.871479336881379,
+      "terminal_deg": 0.09778572925899014,
+      "urdf_range_deg": [
+        -71.51672260814229,
+        65.09234732427316
+      ]
+    },
+    "j_upper_arm": {
+      "channel": 1,
+      "found": true,
+      "status": "flagged",
+      "reasons": [
+        "ROM 2: tags not visible at 940 us; position extrapolated from the pulse fit (seen 1180..2180 us)"
+      ],
+      "axis_deg": 0.1417417014931843,
+      "pivot_mm": 0.2679488218699829,
+      "direction_ok": true,
+      "gain_pct": -0.19461597950718446,
+      "zero_pulse_us": -0.1262598316425283,
+      "rom1_pulse_matches": true,
+      "rom1_stop_margin_deg": 9.63747837493267,
+      "rom2_pulse_matches": true,
+      "rom2_stop_margin_deg": 11.97928895676089,
+      "terminal_deg": 0.07167536393333131,
+      "urdf_range_deg": [
+        -58.1618775524142,
+        67.96976245747508
+      ]
+    },
+    "j_forearm": {
+      "channel": 4,
+      "found": true,
+      "status": "ok",
+      "reasons": [],
+      "axis_deg": 0.45494472079739035,
+      "pivot_mm": 0.3402818276147005,
+      "direction_ok": true,
+      "gain_pct": -0.32410205214407073,
+      "zero_pulse_us": 0.5734418258430196,
+      "rom1_pulse_matches": true,
+      "rom1_stop_margin_deg": 11.784895806745311,
+      "rom2_pulse_matches": true,
+      "rom2_stop_margin_deg": 11.919115109245539,
+      "terminal_deg": 0.18684150883969558,
+      "urdf_range_deg": [
+        -44.99311948333678,
+        64.98098802821647
+      ]
+    }
+  },
+  "map_exact": true,
+  "map_silent_wrong": 0,
+  "urdf_valid": true,
+  "twin": {
+    "samples": 100,
+    "median_mm": 1.3381425610736506,
+    "p95_mm": 2.8525880122772014,
+    "max_mm": 2.9595113752469797
+  },
+  "safety": {
+    "hard_stop_contacts": 0,
+    "max_start_jump_deg": 1.1767203298999287,
+    "pwm_edges": 8342,
+    "pwm_past_hard_stop": 0,
+    "pwm_outside_rom": 0,
+    "unused_channel_far_pulses": 0,
+    "max_slew_us_s": 188.7,
+    "slew_capped": true,
+    "rom_band_enforced": true
+  },
+  "timeline": [
+    {
+      "step": "connect + focus",
+      "s": 8.7,
+      "status": "Connected; nothing moved. ESP32-S3 (esp32_s3_chip_reference): 27 pins surveyed, 1 driven by something else (never driven). Servo driver: PCA9685 at 0x40 on SDA 8 / SCL 9. Next: type the start pulse, tick the power cutoff, Arm + wiggle."
+    },
+    {
+      "step": "health check",
+      "s": 8.0,
+      "status": "Fixes preset from the findings; nothing changed. Next: 2. Tags."
+    },
+    {
+      "step": "cleaned copy",
+      "s": 10.4,
+      "status": "Cleaned copy written; the original is untouched. Next: 2. Tags."
+    },
+    {
+      "step": "tag check",
+      "s": 1.3,
+      "status": "Camera preview \u2026"
+    },
+    {
+      "step": "wiggle 0-7",
+      "s": 87.4,
+      "status": "3 joint(s) mapped; 0 need your confirmation. Next: 4. Range of motion."
+    },
+    {
+      "step": "ROM armed",
+      "s": 0.5,
+      "status": "ROM armed. Pick a joint and press Enable: it starts at the pulse the wiggle left it at."
+    },
+    {
+      "step": "enable 1",
+      "s": 0.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 4.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 6.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 5.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 5.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 5.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 6.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 6.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "ROM 1 on 1",
+      "s": 1.5,
+      "status": "ROM 1 = 2180 \u00b5s. Now the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 4.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 5.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 7.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 4.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 3.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 2.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 1",
+      "s": 1.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "ROM 2 on 1",
+      "s": 1.4,
+      "status": "ROM 2 = 940 \u00b5s. Both ends set: the firmware now holds this joint inside them."
+    },
+    {
+      "step": "enable 4",
+      "s": 0.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 4.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 6.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "ROM 1 on 4",
+      "s": 1.3,
+      "status": "ROM 1 = 2180 \u00b5s. Now the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 4.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 4.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 5.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 5.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 4.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 7.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 1.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 6.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 5.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 3.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 4",
+      "s": 2.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "ROM 2 on 4",
+      "s": 1.5,
+      "status": "ROM 2 = 1020 \u00b5s. Both ends set: the firmware now holds this joint inside them."
+    },
+    {
+      "step": "enable 6",
+      "s": 0.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 3.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 3.5,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 5.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "ROM 1 on 6",
+      "s": 1.7,
+      "status": "ROM 1 = 2140 \u00b5s. Now the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 3.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 3.3,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.6,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 3.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 4.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 5.2,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 4.4,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 7.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 6.0,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 8.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 2.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.7,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 3.8,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 5.1,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "step 6",
+      "s": 1.9,
+      "status": "Move toward one safe end. Stop short of any hard stop, then Set ROM 1; then the other end."
+    },
+    {
+      "step": "ROM 2 on 6",
+      "s": 1.2,
+      "status": "ROM 2 = 780 \u00b5s. Both ends set: the firmware now holds this joint inside them."
+    },
+    {
+      "step": "ROM fit",
+      "s": 0.5,
+      "status": "3 joint(s) fitted; 1 flagged fit(s) need your confirmation. Check j_upper_arm on the robot: Y if the axis and the limits look right."
+    },
+    {
+      "step": "register",
+      "s": 7.3,
+      "status": "tag centres: 6 pairs, rms 0.7 mm. Next: 6. Cut links."
+    },
+    {
+      "step": "segment",
+      "s": 1.6,
+      "status": "vertices: 36878, unassigned_vertices: 815, per_link_faces: {'base': 19709, 'forearm': 16081, 'turret': 17651, 'upper_arm': 18178}, unassigned_faces: 1594. Next: 7. Missing parts."
+    },
+    {
+      "step": "parts",
+      "s": 8.6,
+      "status": "3 library-servo, 4 scanned. Every part is labelled with where it came from. Next: 8. Export."
+    },
+    {
+      "step": "export",
+      "s": 0.5,
+      "status": "3 joint(s) in robot.urdf"
+    }
+  ]
+}

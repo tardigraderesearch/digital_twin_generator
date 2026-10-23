@@ -37,6 +37,8 @@ def run_gui_smoke(seed: int = 0) -> dict:
                 if app.controller.status(ch)["current_us"] == target_us:
                     return
 
+            raise TimeoutError(f"channel {ch} did not settle at {target_us} us")
+
         def pump(seconds: float) -> None:
             end = time.monotonic() + seconds
             while time.monotonic() < end:
@@ -54,11 +56,11 @@ def run_gui_smoke(seed: int = 0) -> dict:
         app.rows[ch]["enable"].invoke()
         bench.wait_output(ch, 1500)
         target = 1500 + (1 if j.direction > 0 else -1) * 200   # 200 us toward the upper stop... slowly
-        app.rows[ch]["var"].set(target)
+        app.rows[ch]["var"].set(target - 1500)
         settle(target)
         out["reached_us"] = app.controller.status(ch)["current_us"]
         app.rows[ch]["rom1"].invoke()
-        app.rows[ch]["var"].set(1500 - (target - 1500))
+        app.rows[ch]["var"].set(1500 - target)
         settle(1500 - (target - 1500))
         app.rows[ch]["rom2"].invoke()
         out["rom_range_us"] = list(app.roms[ch].range)

@@ -1,39 +1,110 @@
-# Digital Twin Generator (private)
-
 **To use:** `cd digital_twin_generator`, then run `python digital_twin_generator.py`
 
-It checks what it needs, asks before installing anything (Y/n), or says it's good to go
-and starts. Linux, Windows and macOS. (`python3` on systems without a `python` command.)
+# Digital Twin Generator (private)
 
-Built robot -> verified, sim-ready model. Closed product: this repository has
-no remote and is never pushed.
+Build an editable robot model from a scan and camera-observed joint motion.
+The launcher checks Python and Tk, prepares a private `.venv`, asks before
+installing dependencies, then opens the window. Nothing installs system-wide.
+The repository stays private and has no remote.
 
-It sits on top of two standalone tools:
+## The eight steps
 
-- **aruco-tag-maker** prints the tag tiles and writes `markers.json`
-  (`dictionary`, `tag_size_mm`, `tags: {name: {id}}`). DTG reads that file
-  directly; nothing is imported from the tag maker.
-- **robo-prober** (v0.2) discovers the controller, arms it and runs the ROM
-  sliders (Set ROM 1 / Set ROM 2, slew limits, watchdog). DTG never arms
-  anything. It talks to an already-armed controller through the
-  `set_pulse` / `armed` API in `dtg.camera`.
+| Step | What you do | What it produces |
+|---|---|---|
+| 1. Scan | Load OBJ/PLY/STL/GLB; review health checks and select fixes. | Preview, health report, optional cleaned copy; original unchanged. |
+| 2. Tags | Load the tag maker's `markers.json`. | Named tags and camera preview. |
+| 3. Wiggle | Choose controller, type the starting pulse, confirm cutoff access, then arm and wiggle. | Channel-to-link map; uncertain results need an answer. |
+| 4. Range of motion | Move each joint to two safe ends and mark them. | Axis, pivot, pulse-to-angle fit and joint limits; hidden-tag warnings. |
+| 5. Register | Supply picked scan tag centres or three matching point pairs. | Scan aligned to the camera model. |
+| 6. Cut links | Split the scan using the registered tags and linkage. | Separate link meshes. |
+| 7. Missing parts | Choose library servos, stand-ins or supplied CAD. | Geometry labelled with its source and assumptions. |
+| 8. Export | Review flags and export. | URDF, STL meshes, communications map and report. |
 
-## Pipeline
+The scanner supplies geometry. The camera observes motion for steps 3 and 4.
+The controller API, safety controls, theme and servo database come from
+`robo_prober`; the tag manifest comes from `aruco_tag_maker`.
+DTG's bench requires explicit arming and a typed start pulse. E-STOP stays
+visible; Escape stops motion. The device enforces limits and watchdog behavior.
+Simulation exercises these paths but does not establish physical safety.
 
-| # | Step | Sensor | Module | Status |
-|---|------|--------|--------|--------|
-| 1 | Load scan (OBJ/PLY/STL/GLB, mesh or point cloud) | scanner file | `dtg.scan` | real |
-| 2 | Scan health check + preview + fix toggles | none | `dtg.health`, `dtg.preview` | real, tuned on bot1 |
-| 3 | Tag placement | none | `markers.json` from aruco-tag-maker | real (file input) |
-| 4 | **Wiggle**: map each IO channel to a joint (child/parent link) and direction | camera | `dtg.linkage` | real on synthetic logs; live capture not run |
-| 5 | **ROM sweep**: joint axis, origin, terminal ranges, µs <-> angle | camera | `dtg.kinematics` | real on synthetic logs; live capture not run |
-| 6 | Register tags to the scan | none | `dtg.registration` | real for picked tag centres or 3+ manual points; finding tags in the scan automatically is **stubbed** |
-| 7 | Cut the scan into links | none | `dtg.segment` | real (geodesic, tag-seeded); no Scan B motion vote yet |
-| 8 | Missing parts | none | `dtg.parts`, `data/servos.json` | real: library servo bodies, stand-ins, CAD snap-in |
-| 9 | Export URDF, comms map, report | none | `dtg.export` | real; inertials, MJCF and ros2_control are **stubs** |
+## Hardware test status
 
-The scanner is used only for geometry (Scan A, later Scan B). Wiggle and ROM
-use the camera alone.
+| Area | Passed on real hardware (board, date) | Physical test pending |
+|---|---|---|
+| Scan health check | Recorded bot1 robot scan, 2026-10-22; no board connection required | Generalization to other scans and scanners |
+| Tags and camera preview | — | Live DTG workflow and calibration |
+| Camera wiggle | — | Physical channel-to-link mapping |
+| Camera range of motion | — | Physical axes, pivots, end marks and hidden-tag handling |
+| Tag-to-scan registration | — | Alignment checked against a physical robot |
+| Cut links | — | Physical geometry and joint boundaries |
+| Missing parts | — | Fit of library bodies and supplied CAD |
+| URDF/export | — | Model motion compared with the physical robot |
+
+Only the scan health check has been exercised on real scan data. The remaining
+workflow is **physical-test-pending**. A software pass or operator confirmation
+is not physical verification; exported reports retain `verified: false`.
+
+## Start with simulation
+
+```sh
+python digital_twin_generator.py doctor
+make sim-env
+sim/.venv/bin/python -m dtg gui --port sim:2
+```
+
+The virtual bench additionally needs the sibling `robo_prober` and
+`aruco_tag_maker` repositories and a C++ compiler for the firmware simulator.
+`make sim-env` prepares a separate `sim/.venv` for development; this is not
+required for the normal app launcher. The simulated camera uses rendered tags,
+not the connected OAK-D. Select the simulated controller before connecting.
+
+Developer checks, from this repository:
+
+```sh
+.venv/bin/python -m pytest -q     # includes GUI tests when a display is available
+make sim-test                    # harness tests; slow full session is opt-in
+SIM_SLOW=1 make sim-test          # also run the full virtual bench session
+sim/.venv/bin/python -m sim gui-walk --seed 2 --screenshots docs/screenshots --out runs/gui-walk
+```
+
+The GUI walkthrough drives all eight tabs on the simulated bench. Its scripted
+operator uses the simulator's hidden truth to answer ambiguous results and
+choose safe motion endpoints. Scan tag picks also come from that truth with
+noise added. This checks the assisted workflow, not autonomous reconstruction.
+Screenshots are saved in [docs/screenshots](docs/screenshots/).
+
+## Saved work
+
+Sessions save automatically under `~/digital_twin_generator_maps/`, or the
+`DTG_MAPS_DIR` override. Reopen one with:
+
+```sh
+python digital_twin_generator.py gui --session /path/to/session
+```
+
+Each session keeps `session.json`, its tag manifest, camera observations,
+health outputs and a `twin/` folder containing `robot.urdf`, meshes,
+`comms_map.json` and `report.json`. Source scans remain unchanged.
+The GUI and CLI share these session files. Use `--help` on `health`, `tags`,
+`wiggle`, `rom`, `register`, `segment`, `parts` or `export` for individual steps.
+`confirm` records answers to flagged channels and fitted joints.
+
+## Limits before a physical test
+
+- Automatic tag detection inside the scan is not implemented: provide tag
+  centres or matching point pairs. At least three non-collinear pairs are needed.
+- Segmentation uses geodesic tag seeds; the proposed second-scan motion vote
+  is not implemented. Thin rails can be mistaken for wires by scan repair.
+- Servo specifications come from `robo_prober.servo_db`. Their source and
+  uncertainty travel into the output; missing dimensions use labelled defaults.
+- Mass/inertia blocks, MJCF, ros2_control and firmware header export are unfinished.
+  Effort and velocity may be placeholders without a library servo.
+- There is no camera calibration wizard. Real camera use needs suitable intrinsics.
+- Continuous rotation, coupled joints and closed loops are unsupported or flagged;
+  prismatic fitting lacks a full synthetic workflow test.
+- No Windows or macOS execution was performed during this Linux handoff.
+
+## How the measurements work
 
 ### Wiggle (before ROM)
 
@@ -98,7 +169,7 @@ Joint zero is the **reference capture**: the pose the robot was scanned in.
 
 ### Health check (bot1 result)
 
-`dtg health ~/Projects/robo-prober/assets/source/bot1.obj --out out/bot1-health`
+`python digital_twin_generator.py health /path/to/bot1.obj --out out/bot1-health`
 takes about 18 s on 310k faces. It finds:
 
 - **Turntable:** one support plane, the tilted disc, which is 40% of the
@@ -123,117 +194,3 @@ Heuristics you should know about:
   straight rail could match this, so check the preview.
 - A support plane must be at least 1.5x wider than the robot's footprint, so
   a robot's own flat base plate is kept.
-
-## Quick start
-
-```sh
-python digital_twin_generator.py                 # window
-python digital_twin_generator.py health SCAN.obj --out out/health --fix planes wires holes fragments
-python digital_twin_generator.py synth --out out/demo/observations.jsonl        # synthetic bot1-like camera log
-python digital_twin_generator.py wiggle out/demo/observations.jsonl              # channel -> joint map
-python digital_twin_generator.py build out/demo/observations.jsonl --out out/demo/twin --servo ch0=MG996R ch4=MG996R
-python digital_twin_generator.py servos                                          # servo library and what is verified
-```
-
-`digital_twin_generator.py` (stdlib only, identical on every OS) asks first,
-then creates `.venv`, installs the dependencies when `pyproject.toml` changes,
-and runs. Tests:
-`.venv/bin/pip install -e .[test] && .venv/bin/python -m pytest`.
-
-## File formats
-
-- **Camera log** (`*.jsonl`, `dtg.observations/1`). Line 1 is the header:
-  source, markers and camera intrinsics. Every other line is one settled
-  capture: `{t, phase: reference|wiggle|rom, event, channel, pulse_us,
-  poses: {tag_id: T_camera_tag 4x4, metres}, reproj_px}`. The live
-  recorder (`dtg.camera.ObservationRecorder`) and the synthetic generator
-  write the same format, and `observations.replay()` replays it.
-- **Scan tag centres** (`--scan-tags`): `{tag_id: [x, y, z]}` in scan
-  coordinates. You need at least 3 tags that do not lie on one line.
-- **Manual alignment** (`--manual-points`): `{"scan": [[x,y,z], ...],
-  "model": [[x,y,z], ...]}` with at least 3 pairs. Scale is solved, so a
-  scan in unknown units comes out in metres.
-- **Outputs**:
-  - `robot.urdf`: each link frame sits on its joint pivot, joint origins
-    are pure translations, axes are in model coordinates, and limits come
-    from the terminal ranges.
-  - `meshes/<link>_<n>_<provenance>.stl`
-  - `comms_map.json`: IO channel -> joint, status, direction, zero pulse,
-    µs/rad, ROM 1/2 µs, safe range, servo model.
-  - `report.json`: provenance per part (scanned / repaired / library-servo
-    / stand-in / CAD), confidence and reasons per joint, flags, and what was
-    not generated. It always says `"verified": false`.
-  - `wiggle.json`, `kinematics.json`, `health.json` and preview PNGs.
-
-## Servo library
-
-`src/dtg/data/servos.json` holds 11 servos: SG90, MG90S, MG996R, DS3218,
-DS3225, LD-20MG, S3003, HS-311, HS-645MG, SG92R and SC-1258TG. The values
-were researched on 2026-10-22 and each entry lists its source URLs.
-
-- **Dimensions verified from a manufacturer page:** Hitec HS-311 and
-  HS-645MG only.
-- **TowerPro SG90, MG90S, MG996R:** the masses come from TowerPro's pages.
-  The body dimensions are DTG's reading of the letter-labelled drawings,
-  and that mapping is not confirmed.
-- **DS3218, DS3225, S3003, SC-1258TG:** taken from servodatabase.com, which
-  is third-party. Retailer conflicts are listed in the notes.
-- **LD-20MG:** from a distributor listing; the body length is unknown.
-- **MG995** was dropped because its manufacturer URL served the MG996R page.
-
-No source gave the shaft offset or the spline height, so those use
-class defaults and the report lists each one as an assumption.
-`servo_body_mesh` places the case on a fitted joint axis with the top of the
-spline at the pivot.
-
-## Test results (2026-10-22)
-
-41 tests pass in about 26 s. The bot1 tests skip when the scan is absent; set
-`DTG_BOT1` to point at it. Results on synthetic data (noise 0.4°, 0.5 mm
-lateral, 1.2 mm depth, base wobble 0.15°, 1% tag dropout, seeds 0-3):
-
-- **Axis:** error ≤ 1.2°.
-- **Pivot:** off the true axis by ≤ 2 mm.
-- **Terminal ranges:** within about 1°.
-- **Slope:** within 1%.
-- **Wiggle map:** exact for all three joints, both unused channels, and the
-  scrambled channel numbers and directions.
-- **Heavier dropout (5%):** produces flags, never a silent wrong mapping.
-- **ArUco pose** on rendered oblique views: 0.8-1° and about 2 mm. A
-  frontal view gives the known ~5° ambiguity, so mount tags at about 30°.
-- **Segmentation** of a fused synthetic arm scan: 82% of vertices correct.
-  The rest is near joint bridges, about 2% left unassigned on purpose.
-
-## Not done yet (honest list)
-
-- **Hardware path:**
-  - The live camera capture, the wiggle driver and the ROM hooks in
-    `dtg.camera` are written but have **not been run on hardware**.
-  - Hooking `rom_sample` / `rom_mark` into robo-prober's ROM window is
-    still to do; robo-prober is not modified here.
-  - There is no camera calibration wizard. The intrinsics JSON comes from
-    any OpenCV calibration.
-- **Registration:** tags are not found automatically in the scan
-  (`locate_tags_in_scan` raises NotImplementedError). You pick the tag
-  centres (`refine_tag_centre` snaps them to the tile face) or use 3-point
-  alignment.
-- **Segmentation:**
-  - Only geodesic splitting from tag seeds is implemented.
-  - The Scan B motion vote from the plan is not.
-  - The experimental joint-plane guide is off by default. It lowered
-    accuracy because the pivot's position along the axis is not observable
-    from tag motion.
-- **Exports:**
-  - Inertials (mass, CoM, inertia) are TODO comments in the URDF.
-  - MJCF, ros2_control and the firmware header are stubs.
-  - Effort and velocity are placeholders unless a library servo is
-    assigned.
-- **Health check:** the heuristics were tuned on one scan (bot1). On the
-  voxel-staircase synthetic scan, one 49 mm "wire" is a false positive. Low
-  confidence comes from roughness only; per-vertex scanner confidence from
-  PLY files is not read yet.
-- **Inputs not handled:** prismatic joints are fitted, but no synthetic test
-  covers them. Continuous rotation, coupled joints and closed loops are
-  flagged or unsupported.
-- **Verification:** nothing is verified against the physical robot. That
-  needs a sim-vs-real overlay check, which is not built.

@@ -24,6 +24,16 @@ def _noise(light: str | None):
     return {"full_well": LIGHT.get(light) or float(light)}
 
 
+def gui_walk_ok(result: dict) -> bool:
+    """A valid URDF alone must not hide an incorrect map or unsafe simulated motion."""
+    safety = result.get("safety", {})
+    return bool(result.get("urdf_valid") and result.get("map_exact")
+                and result.get("map_silent_wrong") == 0
+                and all(safety.get(k) == 0 for k in (
+                    "hard_stop_contacts", "pwm_past_hard_stop", "pwm_outside_rom", "unused_channel_far_pulses"))
+                and safety.get("slew_capped") and safety.get("rom_band_enforced"))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m sim", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -110,7 +120,7 @@ def main(argv=None) -> int:
         brief = {k: out.get(k) for k in ("seed", "out", "map_exact", "map_silent_wrong", "urdf_valid", "safety",
                                          "wiggle", "rom_answers", "export", "shots")}
         print(json.dumps(brief, indent=1, default=str))
-        return 0 if out.get("urdf_valid") and not out["safety"]["hard_stop_contacts"] else 1
+        return 0 if gui_walk_ok(out) else 1
     return 2
 
 

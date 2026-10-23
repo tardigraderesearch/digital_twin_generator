@@ -39,7 +39,7 @@ HORN_WARNING = ("The first pulse moves each servo from wherever it is to the sta
 
 class TwinApp:
     def __init__(self, root: tk.Tk, *, session=None, port: str | None = None, run_timer: bool = True,
-                 sim_seed: int = 0):
+                 sim_seed: int = 0, sim_light: float = 60.0):
         from robo_prober import theme
         from .session import STEPS, Session
         self.root, self.theme = root, theme
@@ -60,6 +60,7 @@ class TwinApp:
         self.stop_flag = threading.Event()
         self.rom_joint: int | None = None
         self.sim_seed = sim_seed
+        self.sim_light = sim_light
         self.session = Session.open(session) if session else Session.new("robot")
         self.status = tk.StringVar(value="")
         self._vars()
@@ -704,7 +705,7 @@ class TwinApp:
             intr = CameraIntrinsics.load(self.calib_var.get().strip())
         cam = self.camera_var.get().strip()
         camera = None if source.startswith("sim") or source == "emulator" else (int(cam) if cam.isdigit() else cam or None)
-        bench = Bench(source, camera=camera, intrinsics=intr)
+        bench = Bench(source, camera=camera, intrinsics=intr, sim_light=self.sim_light)
 
         def job():
             bench.connect()
