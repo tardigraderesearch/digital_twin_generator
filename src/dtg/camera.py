@@ -99,6 +99,82 @@ def detect_corners(image, markers: Markers, detector=None, *, clahe: bool = Fals
     return {int(i): c.reshape(4, 2).astype(np.float64) for c, i in zip(corners, ids.ravel()) if int(i) in wanted}
 
 
+def _bilinear(img: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    h, w = img.shape
+    x = np.clip(x, 0, w - 1.001)
+    y = np.clip(y, 0, h - 1.001)
+    x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = x - x0, y - y0
+    return ((img[y0, x0] * (1 - fx) + img[y0, x0 + 1] * fx) * (1 - fy)
+            + (img[y0 + 1, x0] * (1 - fx) + img[y0 + 1, x0 + 1] * fx) * fy)
+
+
+def refine_corners_edges(image, corners: np.ndarray, *, gamma: float = 2.2, samples: int = 16,
+                         half_width: float | None = None) -> np.ndarray | None:
+    """Unbiased tag corners from the four edges of the black square.
+
+    The detector's corners (and cornerSubPix, which is made for chessboard
+    saddle points) sit inside a blurred square's true corners, so the tag
+    looks smaller and therefore farther away: on the virtual bench that is a
+    1-2% depth error that differs per tag with its defocus (5-10 mm at
+    0.6 m), and it moves every fitted pivot along the camera ray. Here each
+    edge is located where the intensity crosses halfway between the black
+    border and the white quiet zone, which a symmetric blur does not move
+    (computed on linearised intensity, ``gamma``), a line is fitted through
+    each edge and the corners are the line intersections.
+
+    Returns the refined 4x2 corners (same order), or None when an edge
+    cannot be measured (too small, no contrast, clipped by the image).
+    """
+    gray = image if image.ndim == 2 else __import__("cv2").cvtColor(image, __import__("cv2").COLOR_BGR2GRAY)
+    lin = (gray.astype(np.float32) / 255.0) ** gamma
+    c = np.asarray(corners, float).reshape(4, 2)
+    centre = c.mean(axis=0)
+    side = float(np.mean([np.linalg.norm(c[i] - c[(i + 1) % 4]) for i in range(4)]))
+    if side < 12:
+        return None
+    hw = half_width or max(2.0, min(6.0, side / 14.0))
+    steps = np.linspace(-hw, hw, int(hw * 4) + 1)
+    lines = []
+    for i in range(4):
+        a, b = c[i], c[(i + 1) % 4]
+        d = (b - a) / np.linalg.norm(b - a)
+        n = np.array([-d[1], d[0]])
+        if n @ (centre - (a + b) / 2) > 0:
+            n = -n                                  # n points outward (dark -> light)
+        pts = []
+        for s in np.linspace(0.2, 0.8, samples):
+            p = a + (b - a) * s
+            prof = _bilinear(lin, p[0] + steps * n[0], p[1] + steps * n[1])
+            dark, light = prof[: len(prof) // 4].mean(), prof[-(len(prof) // 4):].mean()
+            if light - dark < 0.05:
+                continue
+            level = (dark + light) / 2
+            above = np.nonzero(prof >= level)[0]
+            if not len(above) or above[0] == 0:
+                continue
+            k = above[0]
+            t = steps[k - 1] + (level - prof[k - 1]) / (prof[k] - prof[k - 1]) * (steps[k] - steps[k - 1])
+            pts.append(p + t * n)
+        if len(pts) < samples // 2:
+            return None
+        pts = np.asarray(pts)
+        m = pts.mean(axis=0)
+        _, _, vt = np.linalg.svd(pts - m)
+        lines.append((m, vt[0]))
+    out = np.zeros((4, 2))
+    for i in range(4):
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]       # corner i joins edge i-1 and edge i
+        A = np.array([d1, -d2]).T
+        if abs(np.linalg.det(A)) < 1e-6:
+            return None
+        s = np.linalg.solve(A, p2 - p1)
+        out[i] = p1 + s[0] * d1
+    if np.abs(out - c).max() > hw + 2:
+        return None                                 # refinement ran away: keep the detector's corners
+    return out
+
+
 def pose_from_corners(img: np.ndarray, markers: Markers, intrinsics: CameraIntrinsics):
     """(T_camera_tag, reprojection px) from one tag's four image corners, or None."""
     import cv2
@@ -239,6 +315,9 @@ class ArucoTracker:
             raise RuntimeError(f"cannot open camera {source!r}")
         self.markers, self.intrinsics, self.max_reproj_px = markers, intrinsics, max_reproj_px
         self.clahe = clahe
+        self.edge_refine = True    # unbiased edge-based corners (see refine_corners_edges)
+        self.gamma = 2.2           # camera ISP gamma used to linearise intensities for the edge fit
+        self.last_refined: set = set()
         self.detector = make_detector(markers.dictionary, subpix=subpix)
         self.focus: FocusResult | None = None
         self.ambiguity_ratio = 1.5
@@ -260,17 +339,28 @@ class ArucoTracker:
         (``ambiguity_ratio``). A tag must be seen in at least half the frames.
         """
         per_tag: dict[int, list] = {}
+        refined: dict[int, list] = {}
         for _ in range(frames):
             ok, image = self.cap.read()
             if not ok:
                 continue
-            for k, img in detect_corners(image, self.markers, self.detector, clahe=self.clahe).items():
+            found = detect_corners(image, self.markers, self.detector, clahe=self.clahe)
+            gray = preprocess(image) if found and self.edge_refine else None
+            for k, img in found.items():
                 per_tag.setdefault(k, []).append(img)
+                if gray is not None:
+                    r = refine_corners_edges(gray, img, gamma=self.gamma)
+                    if r is not None:
+                        refined.setdefault(k, []).append(r)
         need = max(1, frames // 2)
         poses, errs = {}, {}
+        self.last_refined = set()
         for k, seen in per_tag.items():
             if len(seen) < need:
                 continue
+            if len(refined.get(k, ())) >= need:      # never mix refined and raw corners in one median
+                seen = refined[k]
+                self.last_refined.add(k)
             fit = self._choose(k, pose_candidates(np.median(np.stack(seen), axis=0), self.markers, self.intrinsics))
             if fit is not None and fit[1] <= self.max_reproj_px:   # drop poor fits (partial, smeared)
                 poses[k], errs[k] = fit
@@ -310,13 +400,33 @@ class ObservationRecorder:
         header = new_header("live", markers=markers.to_dict(), camera=camera)
         self.path.write_text(json.dumps(header) + "\n")
 
-    def _write(self, phase, event, channel=None, pulse=None) -> Frame:
-        poses, errs = self.tracker.capture()
-        frame = Frame(t=time.monotonic() - self.t0, phase=phase, event=event, poses=poses,
-                      channel=channel, pulse_us=pulse, reproj_px=errs)
+    expect: dict | None = None      # channel -> {"child": [tag ids], "parent": [tag ids]}
+    last_visibility: dict | None = None
+
+    def _capture(self, phase, event, channel=None, pulse=None, frames: int | None = None) -> Frame:
+        if frames is None:
+            poses, errs = self.tracker.capture()
+        else:
+            try:
+                poses, errs = self.tracker.capture(frames=frames)
+            except TypeError:       # a tracker without a frame count
+                poses, errs = self.tracker.capture()
+        return Frame(t=time.monotonic() - self.t0, phase=phase, event=event, poses=poses,
+                     channel=channel, pulse_us=pulse, reproj_px=errs)
+
+    def _append(self, frame: Frame) -> Frame:
         with self.path.open("a") as out:
             out.write(json.dumps(frame.to_json()) + "\n")
         return frame
+
+    def _write(self, phase, event, channel=None, pulse=None) -> Frame:
+        return self._append(self._capture(phase, event, channel, pulse))
+
+    def expect_from_wiggle(self, wiggle) -> dict:
+        """Remember which tags each joint's parent and child links carry (from
+        the wiggle result), so rom_mark can check the child is in view."""
+        self.expect = expected_tags(wiggle)
+        return self.expect
 
     def reference(self) -> Frame:
         """Capture with the robot in the pose it was scanned in (joint zero)."""
@@ -358,11 +468,92 @@ class ObservationRecorder:
         time.sleep(self.settle_s)
         return self._write("rom", "sample", channel, pulse_us)
 
-    def rom_mark(self, channel: int, which: int, pulse_us: float) -> Frame:
+    def rom_mark(self, channel: int, which: int, pulse_us: float, *, expect: dict | list | None = None,
+                 retries: int = 2, retry_frames: int = 16) -> Frame:
+        """Capture at Set ROM 1 / Set ROM 2.
+
+        Near the ends of a large range a tag often turns away or slips
+        behind another link. When the child link's tags (``expect``, or what
+        ``expect_from_wiggle`` stored for this channel) are not seen, the
+        capture is retried up to ``retries`` times with ``retry_frames``
+        frames each (a hand or flicker passes; a longer average detects a
+        marginal tag), and the best capture is kept. ``last_visibility``
+        then says what was seen (see ``mark_visibility``) so the window can
+        tell the operator to back off a little or add a second tag; the fit
+        still extrapolates a hidden end, flagged."""
         if which not in (1, 2):
             raise ValueError("ROM mark is 1 or 2")
         time.sleep(self.settle_s)
-        return self._write("rom", f"rom{which}", channel, pulse_us)
+        want = expect if expect is not None else (self.expect or {}).get(channel)
+        event = f"rom{which}"
+        frame = self._capture("rom", event, channel, pulse_us)
+        vis = mark_visibility(frame, want) if want is not None else None
+        tries = 0
+        while vis is not None and not vis["child_visible"] and tries < retries:
+            tries += 1
+            again = self._capture("rom", event, channel, pulse_us, frames=retry_frames)
+            again_vis = mark_visibility(again, want)
+            if len(again_vis["child_seen"]) + len(again_vis["parent_seen"]) > \
+                    len(vis["child_seen"]) + len(vis["parent_seen"]):
+                frame, vis = again, again_vis
+        if vis is not None:
+            vis["retries"] = tries
+            vis["mark"] = f"ROM {which}"
+            vis["message"] = _visibility_message(vis)
+        self.last_visibility = vis
+        return self._append(frame)
+
+
+def expected_tags(wiggle) -> dict:
+    """channel -> {"child": [tag ids], "parent": [tag ids]} from a WiggleResult."""
+    out = {}
+    for c in wiggle.channels:
+        if c.child is None or c.parent is None:
+            continue
+        try:
+            out[c.channel] = {"child": list(wiggle.link(c.child).tags), "parent": list(wiggle.link(c.parent).tags)}
+        except StopIteration:
+            continue
+    return out
+
+
+def mark_visibility(frame: Frame, expect) -> dict:
+    """Which of a joint's tags a capture saw.
+
+    ``expect`` is {"child": [ids], "parent": [ids]}, a plain list of child
+    tag ids, or a WiggleResult (looked up by the frame's channel). Returns
+    {"channel", "visible", "child_seen", "child_hidden", "parent_seen",
+    "child_visible", "parent_visible", "ok", "message"}. ``ok`` needs at
+    least one child and one parent tag: then the joint position at this
+    capture is measured, not extrapolated."""
+    if hasattr(expect, "channels"):
+        expect = expected_tags(expect).get(frame.channel, {})
+    if isinstance(expect, (list, tuple, set)):
+        expect = {"child": list(expect), "parent": None}
+    child = [int(k) for k in (expect or {}).get("child") or []]
+    parent = (expect or {}).get("parent")
+    seen = sorted(int(k) for k in frame.poses)
+    out = {"channel": frame.channel, "visible": seen,
+           "child_seen": [k for k in child if k in frame.poses],
+           "child_hidden": [k for k in child if k not in frame.poses],
+           "parent_seen": [int(k) for k in parent if k in frame.poses] if parent is not None else []}
+    out["child_visible"] = bool(out["child_seen"])
+    out["parent_visible"] = bool(out["parent_seen"]) if parent is not None else True
+    out["ok"] = out["child_visible"] and out["parent_visible"]
+    out["message"] = _visibility_message(out)
+    return out
+
+
+def _visibility_message(vis: dict) -> str:
+    mark = vis.get("mark") or "this capture"
+    if vis["ok"]:
+        return f"{mark}: child tag(s) {vis['child_seen']} seen"
+    if not vis["child_visible"]:
+        return (f"{mark}: child tag(s) {vis['child_hidden']} hidden at this end. Back off a little and mark again, "
+                "or stick a second tag on that link facing the camera at this end. If you keep this mark, the end "
+                "is extrapolated from the pulse fit and the joint is flagged.")
+    return (f"{mark}: no parent tag seen; the joint position here cannot be measured. Check the camera view "
+            "of the parent link.")
 
 
 def render_marker_view(markers: Markers, tag_id: int, T_camera_tag, intrinsics: CameraIntrinsics,
