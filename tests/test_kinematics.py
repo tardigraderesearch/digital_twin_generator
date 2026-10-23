@@ -103,3 +103,24 @@ def test_hidden_rom_ends_are_extrapolated_and_flagged():
     assert elbow.status == "flagged" and any("extrapolated" in r for r in elbow.reasons)
     r = next(x for x in score(log, kin) if x["j"].channel == 7)
     assert r["lim"] < 3.0 and r["axis"] < 3.0
+
+
+def test_pivot_cross_check_flags_a_pivot_the_tag_centres_disagree_with():
+    """Two independent pivots: one from tag orientations (pose pairs), one from
+    the tag centres (circle fit). Orientations that over-rotate the forearm tag
+    about its own centre move the first but not the second: flagged, not ok."""
+    from scipy.spatial.transform import Rotation
+    log = generate(seed=0)
+    kin = infer_kinematics(log, infer_linkage(log, parse_markers(log.header["markers"])))
+    elbow = next(j for j in kin.joints if j.channel == 7)
+    assert elbow.quality["pivot_disagreement_mm"] < 5.0 and elbow.quality["circle_pivot_sigma_mm"] > 0
+    zero = log.header["truth"]["joints"]["j_elbow"]["zero_us"]
+    for f in log.frames:
+        if f.channel == 7 and 4 in f.poses and f.pulse_us is not None:
+            extra = Rotation.from_rotvec(np.radians(0.04 * (f.pulse_us - zero)) * np.array([0, 0, 1.0])).as_matrix()
+            f.poses[4] = f.poses[4].copy()
+            f.poses[4][:3, :3] = f.poses[4][:3, :3] @ extra       # tag turns about its own centre
+    kin = infer_kinematics(log, infer_linkage(log, parse_markers(log.header["markers"])))
+    elbow = next(j for j in kin.joints if j.channel == 7)
+    assert elbow.status == "flagged"
+    assert any("tag centres differ" in r for r in elbow.reasons), elbow.reasons
