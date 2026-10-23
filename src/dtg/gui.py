@@ -1039,11 +1039,14 @@ class TwinApp:
             self.status.set("Connect first.")
             return
         from .steps import markers
+        cutoff = bool(self.cutoff_var.get())
 
         def job():
             if self.bench.recorder is None:
                 self.bench.start_recording(self.session.log_path, markers(self.session))
-            return self.bench.start_rom(joints, cutoff_confirmed=self.cutoff_var.get())
+            if self.wiggle_res is not None:     # marks retry, then warn, when the moving link's tags are hidden
+                self.bench.recorder.expect_from_wiggle(self.wiggle_res)
+            return self.bench.start_rom(joints, cutoff_confirmed=cutoff)
         self._work("Arming the ROM session", job, lambda _: (
             self._fill_rom_rows(), self.status.set("ROM armed. Pick a joint and press Enable: it starts at the "
                                                    "pulse the wiggle left it at.")))
@@ -1114,10 +1117,15 @@ class TwinApp:
             if c is not None and c.child:
                 child_tags = [int(k) for k in self.wiggle_res.link(c.child).tags]
         seen = sorted(frame.poses) if frame is not None else []
-        hidden = child_tags and not set(child_tags) & set(seen)
-        self.rom_warn_var.set(
-            f"The moving link's tag(s) {child_tags} are hidden at ROM {which}: the fit will extrapolate this end "
-            "(flagged). Back off a little and set it again, or add a second tag at another angle." if hidden else "")
+        vis = getattr(self.bench.recorder, "last_visibility", None) if self.bench is not None else None
+        if vis is not None:
+            hidden_msg = "" if vis.get("ok") else vis.get("message", "")
+        else:
+            hidden = child_tags and not set(child_tags) & set(seen)
+            hidden_msg = (f"The moving link's tag(s) {child_tags} are hidden at ROM {which}: the fit will extrapolate "
+                          "this end (flagged). Back off a little and set it again, or add a second tag at another "
+                          "angle." if hidden else "")
+        self.rom_warn_var.set(hidden_msg)
         self._fill_rom_rows()
         self._show_rom_pos(ch)
         self.status.set(f"ROM {which} = {pulse} µs. " + ("Now the other end." if which == 1 else

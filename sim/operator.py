@@ -201,6 +201,7 @@ def run_session(world, out: Path, cfg: OperatorConfig | None = None) -> SessionR
             ctl = Controller(SerialProtocolTransport(bench.port, timeout_s=1.0)).open()
             roms = [RomChannel(ch, j.name, start_us=cfg.start_us, start_source="last_position")
                     for ch, j in rom_channels]
+            recorder.expect_from_wiggle(wig)    # marks retry when the moving link's tags are hidden
             if roms:
                 session = RomSession(ctl, roms, host_slew_us_s=cfg.host_slew_us_s, heartbeat="thread")
                 session.start(power_cutoff_confirmed=True)

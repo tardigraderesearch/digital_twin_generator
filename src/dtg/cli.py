@@ -229,6 +229,7 @@ def cmd_rom(a) -> int:
         try:
             from .steps import markers
             bench.start_recording(s.log_path, markers(s))
+            bench.recorder.expect_from_wiggle(wig)
             bench.start_rom(joints, cutoff_confirmed=True)
             print(ROM_HELP)
             for ch, name, st in joints:
@@ -249,6 +250,9 @@ def cmd_rom(a) -> int:
                     if cmd in ("1", "2"):
                         pulse, frame = bench.rom_mark(ch, int(cmd))
                         print(f"  ROM {cmd} = {pulse} us; tags seen: {sorted(frame.poses) if frame else '-'}")
+                        vis = bench.recorder.last_visibility
+                        if vis is not None and not vis.get("ok"):
+                            print("  WARNING: " + vis.get("message", ""))
                     elif cmd == "w":
                         print(f"  band now {bench.rom_widen(ch)}")
                     elif cmd in ("+", "-") or cmd[:1] in "+-" and cmd[1:].isdigit():

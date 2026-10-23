@@ -6,6 +6,7 @@
     python -m sim report runs/sim-mc              write sim/REPORT.md
     python -m sim calibrate --seed 3              virtual camera vs the real OAK-D bench numbers
     python -m sim gui-smoke --seed 3              robo-prober's ROM window driven by events (needs DISPLAY)
+    python -m sim gui-walk --seed 2 --screenshots docs/screenshots   DTG's window, all 8 steps (needs DISPLAY)
 """
 from __future__ import annotations
 
@@ -54,6 +55,11 @@ def main(argv=None) -> int:
     c.add_argument("--light", default=None)
     g = sub.add_parser("gui-smoke", help="rom-gui driven by events against the bench (needs DISPLAY)")
     g.add_argument("--seed", type=int, default=0)
+    gw = sub.add_parser("gui-walk", help="DTG's window through all 8 steps against the bench (needs DISPLAY)")
+    gw.add_argument("--seed", type=int, default=2)
+    gw.add_argument("--screenshots", help="folder for one screenshot per tab")
+    gw.add_argument("--out", help="session + scan folder (default: a temp folder)")
+    gw.add_argument("--light", type=float, default=60.0)
     a = ap.parse_args(argv)
 
     if a.cmd in ("run", "replay"):
@@ -97,6 +103,14 @@ def main(argv=None) -> int:
         out = run_gui_smoke(a.seed)
         print(json.dumps(out, indent=1, default=str))
         return 0 if out["ok"] else 1
+    if a.cmd == "gui-walk":
+        from .gui_walk import walk
+        out = walk(a.seed, shots=Path(a.screenshots) if a.screenshots else None, light=a.light,
+                   out=Path(a.out) if a.out else None)
+        brief = {k: out.get(k) for k in ("seed", "out", "map_exact", "map_silent_wrong", "urdf_valid", "safety",
+                                         "wiggle", "rom_answers", "export", "shots")}
+        print(json.dumps(brief, indent=1, default=str))
+        return 0 if out.get("urdf_valid") and not out["safety"]["hard_stop_contacts"] else 1
     return 2
 
 
