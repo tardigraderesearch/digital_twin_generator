@@ -1,14 +1,12 @@
-"""Digital Twin Generator bootstrap, shared by run.sh, run.command and run.bat.
+"""Digital Twin Generator. To use:  python digital_twin_generator.py  [command]
 
-The platform launchers only find a Python 3.11+ and hand over to this file,
-so every OS gets the same behaviour:
+One file, any OS. It checks Python and Tk, and if the libraries are missing it asks
+before installing them into a private .venv next to this file (nothing system-wide).
+When everything is there it says so and starts. With no command it opens the app
+window; any dtg command (health, synth, wiggle, build, servos, ...) passes straight through.
 
-1. check Tk (needed for the window, not for the command-line tools),
-2. make a private .venv next to this file (first run only),
-3. install / update the package only when pyproject.toml or Python changed,
-4. launch the app, passing any arguments straight through.
-
-Standard library only. Nothing is installed system-wide.
+-y / --yes, or a non-interactive run, installs without asking.
+Standard library only above the install step.
 """
 
 import hashlib
@@ -32,7 +30,7 @@ WINDOWS = os.name == "nt"
 VPY = os.path.join(VENV, "Scripts", "python.exe") if WINDOWS else os.path.join(VENV, "bin", "python")
 STAMP = os.path.join(VENV, ".%s-installed" % APP)
 SYSTEM = platform.system()
-RUN = "run.bat" if WINDOWS else "./run.sh"
+RUN = "python digital_twin_generator.py"
 
 
 class Problem(Exception):
@@ -43,7 +41,7 @@ class Problem(Exception):
 
 
 def say(message):
-    print("[%s] %s" % (APP, message), flush=True)
+    print("[%s] %s" % (APP, message), file=sys.stderr, flush=True)
 
 
 def python_fix():
@@ -56,7 +54,7 @@ def python_fix():
     if SYSTEM == "Darwin":
         return [
             "Install Python 3.12 from https://www.python.org/downloads/macos/",
-            "(or with Homebrew: brew install python@3.12 python-tk@3.12), then run ./run.sh again.",
+            "(or with Homebrew: brew install python@3.12 python-tk@3.12), then run python3 digital_twin_generator.py again.",
         ]
     return [
         "Install Python 3.11 or newer with your package manager, for example:",
@@ -65,7 +63,7 @@ def python_fix():
         "  Arch:          sudo pacman -S python tk",
         "  openSUSE:      sudo zypper install python3 python3-tk",
         "  Alpine:        sudo apk add python3 py3-tkinter",
-        "Then run ./run.sh again.",
+        "Then run python3 digital_twin_generator.py again.",
     ]
 
 
@@ -73,7 +71,7 @@ def tk_fix():
     if WINDOWS:
         return [
             "Re-run the Python installer from https://www.python.org/downloads/windows/",
-            'choose "Modify" and tick "tcl/tk and IDLE". Then run run.bat again.',
+            'choose "Modify" and tick "tcl/tk and IDLE". Then run python digital_twin_generator.py again.',
         ]
     if SYSTEM == "Darwin":
         return [
@@ -129,9 +127,27 @@ def check_tk(args):
         say("Note: tkinter is missing; fine for '%s', but the window will not open." % args[0])
 
 
+ASSUME_YES = False
+
+
+def confirm(what):
+    """Ask before installing. Yes by default; non-interactive runs and -y skip the question."""
+    if ASSUME_YES or not sys.stdin.isatty():
+        say("%s (auto-yes)." % what)
+        return
+    try:
+        answer = input("[%s] %s Install now? [Y/n] " % (APP, what)).strip().lower()
+    except EOFError:
+        answer = ""
+    if answer not in ("", "y", "yes"):
+        say("Nothing installed. Run %s again when you're ready." % RUN)
+        sys.exit(0)
+
+
 def ensure_venv():
     if os.path.isfile(VPY) and quiet_ok([VPY, "-c", "import sys"]):
         return
+    confirm("%s needs its Python libraries (%s) in a private .venv." % (DISPLAY_NAME, LIBRARIES))
     say("First run: creating a private Python environment in .venv (one time only)...")
     shutil.rmtree(VENV, ignore_errors=True)
     if subprocess.call([sys.executable, "-m", "venv", VENV]) != 0 or not os.path.isfile(VPY):
@@ -161,8 +177,10 @@ def ensure_installed():
     except OSError:
         have = ""
     if want == have and quiet_ok([VPY, "-c", IMPORTS]):
-        say("Everything is already installed.")
+        say("All dependencies present. Good to go.")
         return
+    if have:
+        confirm("%s's libraries need updating." % DISPLAY_NAME)
     say("Installing %s and its libraries (%s)..." % (APP, LIBRARIES))
     say("This needs internet once and takes a minute or two.")
     pip = [VPY, "-m", "pip", "install", "--disable-pip-version-check", "--quiet", "--upgrade"]
@@ -181,7 +199,7 @@ def ensure_installed():
         )
     with open(STAMP, "w", encoding="utf-8") as handle:
         handle.write(want + "\n")
-    say("Install complete.")
+    say("Install complete. Good to go.")
 
 
 def launch(args):
@@ -192,12 +210,15 @@ def launch(args):
         os.execv(VPY, cmd)
     code = subprocess.call(cmd)
     if code != 0:
-        print("", flush=True)
+        print("", file=sys.stderr, flush=True)
         say("The app exited with code %d." % code)
     return code
 
 
 def main(args):
+    global ASSUME_YES
+    if args[:1] in (["-y"], ["--yes"]):
+        ASSUME_YES, args = True, args[1:]
     try:
         check_python()
         check_tk(args)

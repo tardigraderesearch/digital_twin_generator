@@ -1,5 +1,10 @@
 # Digital Twin Generator (private)
 
+**To use:** `cd digital_twin_generator`, then run `python digital_twin_generator.py`
+
+It checks what it needs, asks before installing anything (Y/n), or says it's good to go
+and starts. Linux, Windows and macOS. (`python3` on systems without a `python` command.)
+
 Built robot -> verified, sim-ready model. Closed product: this repository has
 no remote and is never pushed.
 
@@ -122,17 +127,17 @@ Heuristics you should know about:
 ## Quick start
 
 ```sh
-./run.sh                 # window (Linux/macOS); run.bat on Windows, run.command on macOS Finder
-./run.sh health SCAN.obj --out out/health --fix planes wires holes fragments
-./run.sh synth --out out/demo/observations.jsonl        # synthetic bot1-like camera log
-./run.sh wiggle out/demo/observations.jsonl              # channel -> joint map
-./run.sh build out/demo/observations.jsonl --out out/demo/twin --servo ch0=MG996R ch4=MG996R
-./run.sh servos                                          # servo library and what is verified
+python digital_twin_generator.py                 # window
+python digital_twin_generator.py health SCAN.obj --out out/health --fix planes wires holes fragments
+python digital_twin_generator.py synth --out out/demo/observations.jsonl        # synthetic bot1-like camera log
+python digital_twin_generator.py wiggle out/demo/observations.jsonl              # channel -> joint map
+python digital_twin_generator.py build out/demo/observations.jsonl --out out/demo/twin --servo ch0=MG996R ch4=MG996R
+python digital_twin_generator.py servos                                          # servo library and what is verified
 ```
 
-The launchers only find Python 3.11+ and hand over to `launcher.py`
-(stdlib only, identical on every OS), which creates `.venv`, installs the
-dependencies when `pyproject.toml` changes, and runs. Tests:
+`digital_twin_generator.py` (stdlib only, identical on every OS) asks first,
+then creates `.venv`, installs the dependencies when `pyproject.toml` changes,
+and runs. Tests:
 `.venv/bin/pip install -e .[test] && .venv/bin/python -m pytest`.
 
 ## File formats
