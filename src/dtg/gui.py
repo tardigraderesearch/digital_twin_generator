@@ -234,8 +234,16 @@ class TwinApp:
         body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=1)
         body.rowconfigure(0, weight=1)
-        self.tag_table = self._table(body, ("id", "name", "link (after the wiggle)", "seen"), (60, 160, 220, 80), 0, 0)
-        self.tags_text = self._text(body, 0, 1)
+        self.tag_table = self._table(body, ("id", "name", "link (after the wiggle)", "seen by the camera"),
+                                     (60, 160, 220, 140), 0, 0)
+        right = ttk.Frame(body)
+        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+        self.tags_text = self._text(right, 0, 0)
+        self.tags_text.configure(height=9)
+        self.tags_cam = ttk.Label(right, text="Connect to see which tags the camera finds.", anchor="center")
+        self.tags_cam.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     # ---------------------------------------------------------------- tab 3
     def _tab_wiggle(self, t):
@@ -730,6 +738,7 @@ class TwinApp:
         img, seen = result
         if img is not None:
             self._show_image(self.cam_img, img, "cam", max_w=560, max_h=520)
+            self._show_image(self.tags_cam, img, "tagcam", max_w=700, max_h=520)
         self._fill_tags(seen)
 
     def _fill_channels(self):
@@ -865,6 +874,7 @@ class TwinApp:
         self._hw_buttons()
         self.stop_flag.clear()
         delta = int(self.delta_var.get() or 80)
+        auto_next = bool(self.auto_next_var.get())       # Tk variables are read here, never in the worker
         self.queue_channels = list(channels)
         from .steps import markers
 
@@ -883,7 +893,7 @@ class TwinApp:
                 self._say(f"wiggling output {ch} (±{delta} µs around {start})")
                 b.wiggle(ch, start_us=start, delta_us=delta)
                 self._post(self._row_state, ch, "captured")
-                if not self.auto_next_var.get():
+                if not auto_next:
                     break
             self.session.set_input("wiggle_start_us", start)
             from .steps import analyse_wiggle
