@@ -8,24 +8,29 @@ from dtg.camera import CameraIntrinsics, ObservationRecorder, estimate_poses, re
 from dtg.markers import parse_markers
 from dtg.parts import load_servo_library, servo_body_mesh, servo_spec
 
-REQUIRED = {"SG90", "MG90S", "MG996R", "DS3218", "DS3225", "LD-20MG"}
+REQUIRED = {"SG90", "MG90S", "MG996R", "DS3218MG", "DS3225MG", "LD-20MG"}
 
 
-def test_servo_library_entries_have_sources():
+def test_servo_library_comes_from_robo_prober():
+    from robo_prober import servo_db
     lib = load_servo_library()
+    assert lib["source"] == "robo_prober.servo_db" and len(lib["servos"]) == len(servo_db.servos())
     models = {s["model"] for s in lib["servos"]}
-    assert REQUIRED <= models and len(models) >= 9
+    assert REQUIRED <= models
     for s in lib["servos"]:
         assert s["sources"], s["model"]
         assert isinstance(s["dims_verified"], bool) and isinstance(s["mass_verified"], bool)
         if s["dims_verified"]:
             assert s["body_mm"] and "manufacturer" in s["dims_source"]
+    assert set(lib["class_defaults"]) >= {e["category"] for e in servo_db.servos()}
 
 
 def test_servo_spec_and_placement():
     spec = servo_spec("MG996R")
+    assert spec.model == "towerpro-mg996r" and servo_spec("towerpro-mg996r").model == spec.model
     assert spec.effort_nm == pytest.approx(11 * 0.0980665)
-    assert any("not manufacturer-verified" in a for a in spec.assumptions)
+    assert any("class default" in a for a in spec.assumptions)     # no spline height in any datasheet
+    assert spec.height_with_spline_mm > spec.body_mm[2]
     pivot, axis = np.array([0.1, 0.0, 0.2]), np.array([0, 1.0, 0])
     body = servo_body_mesh(spec, pivot, axis, [1, 0, 0])
     along = (body.vertices - pivot) @ axis
@@ -36,8 +41,8 @@ def test_servo_spec_and_placement():
 
 
 def test_unknown_servo():
-    with pytest.raises(KeyError):
-        servo_spec("NOPE-1")
+    with pytest.raises(KeyError, match="did you mean"):
+        servo_spec("MG99")
 
 
 MARKERS = parse_markers({"dictionary": "DICT_4X4_50", "tag_size_mm": 25, "tags": {"base": {"id": 3}}})

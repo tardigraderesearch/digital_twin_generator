@@ -6,7 +6,7 @@ __pycache__/
 .cache/
 
 # Test data and run outputs never go in git (private scans, camera logs, exports)
-data/
+/data/
 out/
 runs/
 *.obj

@@ -3,9 +3,12 @@
 One file, any OS. It checks Python and Tk, and if the libraries are missing it asks
 before installing them into a private .venv next to this file (nothing system-wide).
 When everything is there it says so and starts. With no command it opens the app
-window; any dtg command (health, synth, wiggle, build, servos, ...) passes straight through.
+window; any dtg command (doctor, health, wiggle, rom, build, servos, ...) passes straight through.
 
 -y / --yes, or a non-interactive run, installs without asking.
+robo-prober (the open hardware library DTG drives the controller with) is installed from a
+sibling checkout (../robo_prober) when there is one, else from its public repository;
+DTG_ROBO_PROBER overrides the source (a path or a pip requirement).
 Standard library only above the install step.
 """
 
@@ -19,12 +22,15 @@ import sys
 APP = "digital-twin-generator"
 MODULE = "dtg"
 DISPLAY_NAME = "Digital Twin Generator"
-LIBRARIES = "numpy, SciPy, trimesh, matplotlib, OpenCV, Pillow"
-IMPORTS = "import dtg, cv2, numpy, scipy, trimesh, matplotlib, PIL"
-NO_WINDOW_COMMANDS = {"health", "synth", "wiggle", "build", "servos", "-h", "--help", "--version"}
+LIBRARIES = "robo-prober, numpy, SciPy, trimesh, matplotlib, OpenCV, Pillow"
+IMPORTS = "import dtg, robo_prober, cv2, numpy, scipy, trimesh, matplotlib, PIL"
+NO_WINDOW_COMMANDS = {"doctor", "health", "synth", "tags", "wiggle", "rom", "register", "segment", "parts",
+                      "build", "servos", "session", "estop", "-h", "--help", "--version"}
+ROBO_PROBER_GIT = "robo-prober @ git+https://github.com/tardigraderesearch/robo_prober.git"
 MIN_PYTHON = (3, 11)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SIBLING_ROBO_PROBER = os.path.join(os.path.dirname(HERE), "robo_prober")
 VENV = os.path.join(HERE, ".venv")
 WINDOWS = os.name == "nt"
 VPY = os.path.join(VENV, "Scripts", "python.exe") if WINDOWS else os.path.join(VENV, "bin", "python")
@@ -155,6 +161,16 @@ def ensure_venv():
         raise Problem("Could not create the virtual environment.", *venv_fix())
 
 
+def robo_prober_source():
+    """Where robo-prober comes from: DTG_ROBO_PROBER, a sibling checkout, or the public repo."""
+    override = os.environ.get("DTG_ROBO_PROBER")
+    if override:
+        return override
+    if os.path.isfile(os.path.join(SIBLING_ROBO_PROBER, "pyproject.toml")):
+        return SIBLING_ROBO_PROBER
+    return ROBO_PROBER_GIT
+
+
 def wanted_stamp():
     try:
         with open(os.path.join(HERE, "pyproject.toml"), "rb") as handle:
@@ -166,7 +182,8 @@ def wanted_stamp():
         [VPY, "-c", "import sys; sys.stdout.write(sys.version)"],
         stdout=subprocess.PIPE, check=False,
     ).stdout
-    return hashlib.sha256(data + version).hexdigest()
+    # The venv's Python version and robo-prober's source too: changing either reinstalls.
+    return hashlib.sha256(data + version + robo_prober_source().encode()).hexdigest()
 
 
 def ensure_installed():
@@ -176,7 +193,7 @@ def ensure_installed():
             have = handle.read().strip()
     except OSError:
         have = ""
-    if want == have and quiet_ok([VPY, "-c", IMPORTS]):
+    if want == have and quiet_ok([VPY, "-P", "-c", IMPORTS]):
         say("All dependencies present. Good to go.")
         return
     if have:
@@ -186,13 +203,16 @@ def ensure_installed():
     pip = [VPY, "-m", "pip", "install", "--disable-pip-version-check", "--quiet", "--upgrade"]
     if subprocess.call(pip + ["pip"]) != 0:
         say("Could not upgrade pip; continuing with the bundled one.")
-    if subprocess.call(pip + ["--editable", HERE]) != 0:
+    source = robo_prober_source()
+    say("robo-prober from %s" % source)
+    rp = ["--editable", source] if os.path.isdir(source) else [source]
+    if subprocess.call(pip + rp) != 0 or subprocess.call(pip + ["--editable", HERE]) != 0:
         raise Problem(
             "Installing the Python libraries failed (see the pip messages above).",
             "Check your internet connection and run %s again." % RUN,
             "To start over completely, delete the .venv folder.",
         )
-    if subprocess.call([VPY, "-c", IMPORTS]) != 0:
+    if subprocess.call([VPY, "-P", "-c", IMPORTS]) != 0:
         raise Problem(
             "The libraries installed but do not import (see the error above).",
             "Delete the .venv folder and run %s again." % RUN,
@@ -205,7 +225,8 @@ def ensure_installed():
 def launch(args):
     if not args:
         say("Opening the %s window..." % DISPLAY_NAME)
-    cmd = [VPY, "-m", MODULE] + args
+    # -P: never import from the current folder (nothing here may shadow an installed package).
+    cmd = [VPY, "-P", "-m", MODULE] + args
     if not WINDOWS:
         os.execv(VPY, cmd)
     code = subprocess.call(cmd)

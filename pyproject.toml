@@ -18,6 +18,9 @@ dependencies = [
   "networkx>=3.0",
   "opencv-contrib-python-headless>=4.8",
   "Pillow>=10.0",
+  # the open hardware library (controller protocol, discovery, ROM, servo database, theme);
+  # the entry file installs it from ../robo_prober or its public repository
+  "robo-prober>=0.2",
 ]
 
 [project.optional-dependencies]

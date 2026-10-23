@@ -23,10 +23,48 @@ PROVENANCE = ("scanned", "repaired", "library-servo", "stand-in", "CAD")
 KGCM_TO_NM = 0.0980665
 
 
+def class_defaults() -> dict:
+    """Per-size-class fallbacks for values no datasheet gives (always reported as assumptions)."""
+    return json.loads(resources.files("dtg").joinpath("data/servos.json").read_text())["class_defaults"]
+
+
 def load_servo_library(path: str | Path | None = None) -> dict:
+    """The servo library in DTG's ``dtg.servo-library/1`` shape.
+
+    The models come from robo-prober's servo database through its ``to_dtg``
+    bridge (one source of truth for both programs); ``path`` loads a library
+    file in the same shape instead.
+    """
     if path:
         return json.loads(Path(path).read_text())
-    return json.loads(resources.files("dtg").joinpath("data/servos.json").read_text())
+    from robo_prober import servo_db
+    servos = []
+    for entry in servo_db.servos():
+        item = servo_db.to_dtg(entry)
+        item["id"] = entry["id"]
+        item["clone_of"] = entry.get("clone_of")
+        servos.append(item)
+    return {"schema": "dtg.servo-library/1", "source": "robo_prober.servo_db", "class_defaults": class_defaults(),
+            "servos": servos}
+
+
+def find_servo(model: str, library: dict | None = None) -> dict:
+    """Library entry by servo_db id or model name (genuine, manufacturer-verified parts first)."""
+    lib = library or load_servo_library()
+    key = model.strip().lower()
+    by_id = [s for s in lib["servos"] if str(s.get("id", "")).lower() == key]
+    named = by_id or [s for s in lib["servos"] if s["model"].lower() == key
+                      or f"{s['manufacturer']} {s['model']}".lower() == key]
+    if not named:
+        hint = ""
+        try:
+            from robo_prober import servo_db
+            hint = "; did you mean: " + ", ".join(e["id"] for e in servo_db.search(model, limit=5))
+        except Exception:  # noqa: BLE001 - a hint only
+            pass
+        raise KeyError(f"servo {model!r} not in the servo library{hint}")
+    named.sort(key=lambda s: (s.get("clone_of") is not None, not s.get("dims_verified")))
+    return named[0]
 
 
 @dataclass
@@ -51,10 +89,9 @@ class ServoSpec:
 
 def servo_spec(model: str, library: dict | None = None) -> ServoSpec:
     lib = library or load_servo_library()
-    entry = next((s for s in lib["servos"] if s["model"].lower() == model.lower()), None)
-    if entry is None:
-        raise KeyError(f"servo {model!r} not in library; known: {', '.join(s['model'] for s in lib['servos'])}")
-    defaults = lib["class_defaults"][entry.get("size_class") or "standard"]
+    entry = find_servo(model, lib)
+    classes = lib.get("class_defaults") or class_defaults()
+    defaults = classes.get(entry.get("size_class") or "standard", classes["standard"])
     assumptions = []
     vals = {}
     for key in ("body_mm", "height_with_spline_mm", "length_with_tabs_mm", "tab_height_mm", "shaft_offset_from_end_mm"):
@@ -63,6 +100,15 @@ def servo_spec(model: str, library: dict | None = None) -> ServoSpec:
             assumptions.append(f"{key} = {defaults[key]} ({entry.get('size_class')} class default, not datasheet)")
         else:
             vals[key] = entry[key]
+    if entry.get("height_with_spline_mm") is None and entry.get("body_mm") is not None:
+        # keep the class's spline height above a measured body, not a class-default total height
+        vals["height_with_spline_mm"] = round(entry["body_mm"][2] + defaults["height_with_spline_mm"]
+                                              - defaults["body_mm"][2], 1)
+        assumptions = [a if not a.startswith("height_with_spline_mm") else
+                       f"height_with_spline_mm = {vals['height_with_spline_mm']} (body height + "
+                       f"{entry.get('size_class')} class spline, not datasheet)" for a in assumptions]
+    if entry.get("body_mm") is None:
+        assumptions.append("body size is a class default: the servo database has no dimensions for it")
     if not entry.get("dims_verified"):
         assumptions.append(f"dimensions not manufacturer-verified: {entry.get('dims_source') or 'no source'}")
     torque = entry.get("stall_torque_kgcm") or {}
@@ -70,7 +116,7 @@ def servo_spec(model: str, library: dict | None = None) -> ServoSpec:
     effort = max(torque.values()) * KGCM_TO_NM if torque else None
     # use the speed at the same (highest) voltage as the torque where possible
     velocity = (np.pi / 3) / min(speed.values()) if speed else None
-    return ServoSpec(model=entry["model"], mass_g=entry.get("mass_g"), effort_nm=effort, velocity_rad_s=velocity,
+    return ServoSpec(model=entry.get("id") or entry["model"], mass_g=entry.get("mass_g"), effort_nm=effort, velocity_rad_s=velocity,
                      assumptions=assumptions, entry=entry, **vals)
 
 

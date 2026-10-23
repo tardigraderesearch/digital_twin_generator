@@ -1,0 +1,61 @@
+{
+  "schema": "dtg.servo-class-defaults/1",
+  "note": "Servo models come from robo-prober's servo database (robo_prober.servo_db, via servo_db.to_dtg): one source of truth. This file holds only the per-size-class fallbacks DTG uses where a datasheet gives no value; every use is listed as an assumption in the report. mini/large/giant are rough class shapes, not measured.",
+  "class_defaults": {
+    "micro": {
+      "body_mm": [
+        23.0,
+        12.2,
+        27.0
+      ],
+      "height_with_spline_mm": 31.0,
+      "length_with_tabs_mm": 32.5,
+      "tab_height_mm": 17.5,
+      "shaft_offset_from_end_mm": 6.0
+    },
+    "standard": {
+      "body_mm": [
+        40.5,
+        20.0,
+        37.5
+      ],
+      "height_with_spline_mm": 43.0,
+      "length_with_tabs_mm": 54.0,
+      "tab_height_mm": 27.0,
+      "shaft_offset_from_end_mm": 10.0
+    },
+    "mini": {
+      "body_mm": [
+        30.0,
+        13.0,
+        30.0
+      ],
+      "height_with_spline_mm": 34.0,
+      "length_with_tabs_mm": 40.0,
+      "tab_height_mm": 20.0,
+      "shaft_offset_from_end_mm": 7.0
+    },
+    "large": {
+      "body_mm": [
+        60.0,
+        30.0,
+        55.0
+      ],
+      "height_with_spline_mm": 62.0,
+      "length_with_tabs_mm": 76.0,
+      "tab_height_mm": 40.0,
+      "shaft_offset_from_end_mm": 14.0
+    },
+    "giant": {
+      "body_mm": [
+        66.0,
+        30.0,
+        57.0
+      ],
+      "height_with_spline_mm": 66.0,
+      "length_with_tabs_mm": 84.0,
+      "tab_height_mm": 42.0,
+      "shaft_offset_from_end_mm": 15.0
+    }
+  }
+}

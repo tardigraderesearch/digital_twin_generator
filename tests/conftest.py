@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 
 # Test data stays out of git: bot1 is referenced by path and tests skip without it.
-BOT1 = Path(os.environ.get("DTG_BOT1", Path.home() / "Projects/robo-prober/assets/source/bot1.obj"))
+_CANDIDATES = [Path.home() / p / "assets/source/bot1.obj"
+               for p in ("Projects/robo_prober", "Projects/robo-prober", "Projects/robo-prober-v0.1-old")]
+BOT1 = Path(os.environ.get("DTG_BOT1") or next((p for p in _CANDIDATES if p.is_file()), _CANDIDATES[0]))
 
 
 @pytest.fixture(scope="session")
