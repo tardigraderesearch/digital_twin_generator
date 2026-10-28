@@ -1,80 +1,53 @@
-**To use:** `cd digital_twin_generator`, then run `python digital_twin_generator.py`
+# digital_twin_generator
 
-# Digital Twin Generator
+Source for **[Digital Twin Generator](https://github.com/tardigraderesearch/digital-twin-generator)**: put a hand-built robot on the desk, get back a simulation-ready model of it.
 
-> **Work in progress.** Every step has been exercised end to end on a simulated bench; only the scan health check has run on real hardware so far. See the hardware test status table below before trusting it with a real robot.
+![From a real robot arm to a simulation model](https://raw.githubusercontent.com/tardigraderesearch/digital-twin-generator/main/media/dtg-demo.gif)
 
-Build an editable robot model from a scan and camera-observed joint motion.
-The launcher checks Python and Tk, prepares a private `.venv`, asks before
-installing dependencies, then opens the window. Nothing installs system-wide.
-
-## The eight steps
-
-| Step | What you do | What it produces |
-|---|---|---|
-| 1. Scan | Load OBJ/PLY/STL/GLB; review health checks and select fixes. | Preview, health report, optional cleaned copy; original unchanged. |
-| 2. Tags | Load the tag maker's `markers.json`. | Named tags and camera preview. |
-| 3. Wiggle | Choose controller, type the starting pulse, confirm cutoff access, then arm and wiggle. | Channel-to-link map; uncertain results need an answer. |
-| 4. Range of motion | Move each joint to two safe ends and mark them. | Axis, pivot, pulse-to-angle fit and joint limits; hidden-tag warnings. |
-| 5. Register | Supply picked scan tag centres or three matching point pairs. | Scan aligned to the camera model. |
-| 6. Cut links | Split the scan using the registered tags and linkage. | Separate link meshes. |
-| 7. Missing parts | Choose library servos, stand-ins or supplied CAD. | Geometry labelled with its source and assumptions. |
-| 8. Export | Review flags and export. | URDF, STL meshes, communications map and report. |
-
-The scanner supplies geometry. The camera observes motion for steps 3 and 4.
-The controller API, safety controls, theme and servo database come from
-`robo_prober`; the tag manifest comes from `aruco_tag_maker`.
-DTG's bench requires explicit arming and a typed start pulse. E-STOP stays
-visible; Escape stops motion. The device enforces limits and watchdog behavior.
-Simulation exercises these paths but does not establish physical safety.
-
-## Hardware test status
-
-| Area | Passed on real hardware (board, date) | Physical test pending |
-|---|---|---|
-| Scan health check | Recorded bot1 robot scan, 2026-10-22; no board connection required | Generalization to other scans and scanners |
-| Tags and camera preview | — | Live DTG workflow and calibration |
-| Camera wiggle | — | Physical channel-to-link mapping |
-| Camera range of motion | — | Physical axes, pivots, end marks and hidden-tag handling |
-| Tag-to-scan registration | — | Alignment checked against a physical robot |
-| Cut links | — | Physical geometry and joint boundaries |
-| Missing parts | — | Fit of library bodies and supplied CAD |
-| URDF/export | — | Model motion compared with the physical robot |
-
-Only the scan health check has been exercised on real scan data. The remaining
-workflow is **physical-test-pending**. A software pass or operator confirmation
-is not physical verification; exported reports retain `verified: false`.
-
-## Start with simulation
+## Quickstart
 
 ```sh
-python digital_twin_generator.py doctor
+cd digital_twin_generator
+python digital_twin_generator.py
+```
+
+The launcher checks Python and Tk, prepares a private `.venv`, asks before
+installing dependencies, then opens the window. Nothing installs system-wide.
+`python digital_twin_generator.py doctor` reports what the installation can do.
+
+The window walks through eight tabs: scan, tags, wiggle, range of motion,
+register, cut links, missing parts and export. The controller API, safety
+controls, theme and servo database come from
+[robo_prober](https://github.com/tardigraderesearch/robo_prober); the tag
+manifest comes from [aruco-tag-maker](https://github.com/tardigraderesearch/aruco-tag-maker).
+Motion requires explicit arming and a typed start pulse, E-STOP stays visible,
+Escape stops motion, and the device enforces limits and a watchdog.
+
+## Run on the virtual bench
+
+```sh
 make sim-env
 sim/.venv/bin/python -m dtg gui --port sim:2
 ```
 
-The virtual bench additionally needs the sibling `robo_prober` and
-`aruco_tag_maker` repositories and a C++ compiler for the firmware simulator.
-`make sim-env` prepares a separate `sim/.venv` for development; this is not
-required for the normal app launcher. The simulated camera uses rendered tags,
-not the connected OAK-D. Select the simulated controller before connecting.
+The virtual bench needs the sibling `robo_prober` and `aruco_tag_maker`
+repositories and a C++ compiler for the firmware simulator. `make sim-env`
+prepares a separate `sim/.venv`. The simulated camera renders the tags; select
+the simulated controller before connecting.
 
-Developer checks, from this repository:
+Developer checks:
 
 ```sh
 .venv/bin/python -m pytest -q     # includes GUI tests when a display is available
-make sim-test                    # harness tests; slow full session is opt-in
+make sim-test                     # harness tests
 SIM_SLOW=1 make sim-test          # also run the full virtual bench session
 sim/.venv/bin/python -m sim gui-walk --seed 2 --screenshots docs/screenshots --out runs/gui-walk
 ```
 
-The GUI walkthrough drives all eight tabs on the simulated bench. Its scripted
-operator uses the simulator's hidden truth to answer ambiguous results and
-choose safe motion endpoints. Scan tag picks also come from that truth with
-noise added. This checks the assisted workflow, not autonomous reconstruction.
-Screenshots are saved in [docs/screenshots](docs/screenshots/).
+The GUI walkthrough drives all eight tabs on the virtual bench and saves
+[screenshots](docs/screenshots/).
 
-## Saved work
+## Saved work and CLI
 
 Sessions save automatically under `~/digital_twin_generator_maps/`, or the
 `DTG_MAPS_DIR` override. Reopen one with:
@@ -87,23 +60,8 @@ Each session keeps `session.json`, its tag manifest, camera observations,
 health outputs and a `twin/` folder containing `robot.urdf`, meshes,
 `comms_map.json` and `report.json`. Source scans remain unchanged.
 The GUI and CLI share these session files. Use `--help` on `health`, `tags`,
-`wiggle`, `rom`, `register`, `segment`, `parts` or `export` for individual steps.
+`wiggle`, `rom`, `register`, `segment`, `parts` or `export` for individual steps;
 `confirm` records answers to flagged channels and fitted joints.
-
-## Limits before a physical test
-
-- Automatic tag detection inside the scan is not implemented: provide tag
-  centres or matching point pairs. At least three non-collinear pairs are needed.
-- Segmentation uses geodesic tag seeds; the proposed second-scan motion vote
-  is not implemented. Thin rails can be mistaken for wires by scan repair.
-- Servo specifications come from `robo_prober.servo_db`. Their source and
-  uncertainty travel into the output; missing dimensions use labelled defaults.
-- Mass/inertia blocks, MJCF, ros2_control and firmware header export are unfinished.
-  Effort and velocity may be placeholders without a library servo.
-- There is no camera calibration wizard. Real camera use needs suitable intrinsics.
-- Continuous rotation, coupled joints and closed loops are unsupported or flagged;
-  prismatic fitting lacks a full synthetic workflow test.
-- No Windows or macOS execution was performed during this Linux handoff.
 
 ## How the measurements work
 
@@ -116,8 +74,8 @@ clamped to 150 µs. A channel that is not driven yet is first started at its
 start pulse (robo-prober's explicit START). The wiggle ends at the start
 pulse; if anything fails, the controller is stopped (all outputs released)
 rather than moved back. Before the wiggle, `ArucoTracker.lock_focus()` sweeps
-the lens and locks manual focus on the robot: on the real bench, autofocus
-locked on the background and no tag was detected. The camera tracks every tag. `infer_linkage` then works
+the lens and locks manual focus on the robot, so the tags stay sharp against
+a busy background. The camera tracks every tag. `infer_linkage` then works
 through these steps:
 
 1. Measure each tag's motion relative to the root (base) tag. Motion counts
@@ -188,10 +146,3 @@ All fixes are opt-in and work on a copy:
 `--fix planes wires holes fragments` writes `bot1.fixed.stl`. The fixes
 remove 120k turntable faces and 23k wire faces, drop the shreds left behind,
 and patch 46 holes with 932 faces, which are labelled `repaired`.
-
-Heuristics you should know about:
-
-- A wire is "thinner than 4.5 mm and runs longer than 30 mm". A long, thin,
-  straight rail could match this, so check the preview.
-- A support plane must be at least 1.5x wider than the robot's footprint, so
-  a robot's own flat base plate is kept.

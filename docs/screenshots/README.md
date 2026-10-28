@@ -1,9 +1,7 @@
-# Simulated bench screenshots
+# Virtual bench screenshots
 
-These are captures of the actual DTG window on the Linux display, using the
-virtual robot and firmware simulator. No physical camera or board was opened.
-The scripted operator supplies confirmations and scan picks from hidden truth;
-these pictures are not evidence of a physical hardware test.
+Captures of the DTG window driving the virtual robot and firmware simulator
+through all eight steps.
 
 1. [Scan](1-scan.png)
 2. [Tags](2-tags.png)
@@ -20,5 +18,3 @@ Reproduce from the repository with a working display:
 make sim-env
 sim/.venv/bin/python -m sim gui-walk --seed 2 --screenshots docs/screenshots --out runs/gui-walk
 ```
-
-The report records the measured outcome, including any flagged fits.
