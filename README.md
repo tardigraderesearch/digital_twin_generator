@@ -1,13 +1,21 @@
-# digital_twin_generator
+<p align="center"><img src="docs/banner.png" width="100%" alt="Digital Twin Generator, the desktop app: eight guided steps turn a 3D scan and a camera into a robot model a simulator can load"></p>
 
-Source for **[Digital Twin Generator](https://github.com/tardigraderesearch/digital-twin-generator)**: put a hand-built robot on the desk, get back a simulation-ready model of it.
+**What it is.** The source code of [Digital Twin Generator](https://github.com/tardigraderesearch/digital-twin-generator), a desktop app that turns a hand-built servo robot into a simulation model of that exact robot.
+
+**What it does.** It walks you through eight steps, from a 3D scan and a camera watching the robot move to a URDF model file: which motor drives which joint, how far each joint can safely move, and the shape of every moving part.
+
+**Why it matters.** Robots are trained in simulation before they touch the real world, and that normally needs CAD drawings and hand measurement. This app measures the robot itself, safely, in one guided session.
 
 ![From a real robot arm to a simulation model](https://raw.githubusercontent.com/tardigraderesearch/digital-twin-generator/main/media/dtg-demo.gif)
+
+| 1. Scan check | 2. Find the tags | 6. Cut the scan into parts | 8. Export |
+|---|---|---|---|
+| ![Scan health check](docs/screenshots/1-scan.png) | ![Tag detection](docs/screenshots/2-tags.png) | ![Cut links](docs/screenshots/6-cut-links.png) | ![Export](docs/screenshots/8-export.png) |
 
 ## Quickstart
 
 ```sh
-cd digital_twin_generator
+git clone https://github.com/tardigraderesearch/digital_twin_generator && cd digital_twin_generator
 python digital_twin_generator.py
 ```
 
